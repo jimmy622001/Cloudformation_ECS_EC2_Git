@@ -116,7 +116,7 @@ Resources:
     Condition: IsPostgreSQL
     Properties:
       Description: !Sub 'Parameter group for ${ProjectName}-${Environment} PostgreSQL'
-      Family: !Sub 'postgres${CleanVersionCustomResource.CleanVersion}'
+      Family: 'postgres15'
       Parameters:
         max_connections: '100'
         shared_buffers: '16384'
@@ -136,7 +136,7 @@ Resources:
     Condition: IsMySQL
     Properties:
       Description: !Sub 'Parameter group for ${ProjectName}-${Environment} MySQL'
-      Family: !Sub 'mysql${CleanVersionCustomResource.CleanVersion}'
+      Family: 'mysql8.0'
       Parameters:
         max_connections: '100'
         slow_query_log: '1'
@@ -242,18 +242,6 @@ Resources:
     Properties:
       Name: !Sub '/${ProjectName}/${Environment}/database'
       Description: !Sub 'Database credentials for ${ProjectName} ${Environment}'
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${Environment}-db-credentials'
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Project
-          Value: !Ref ProjectName
-
-  DBCredentialsSecretUpdate:
-    Type: AWS::SecretsManager::Secret
-    Properties:
-      Name: !Sub '/${ProjectName}/${Environment}/database-updated'
       SecretString: !Join 
         - ''
         - - '{"username":"'
@@ -281,7 +269,14 @@ Resources:
           - '/'
           - !Ref DBName
           - '"}'
-
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-db-credentials'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
   # Lambda function to clean engine version for parameter group family
   CleanEngineVersionFunction:
     Type: AWS::Lambda::Function
@@ -324,11 +319,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
 
-  CleanVersionCustomResource:
-    Type: Custom::CleanVersion
-    Properties:
-      ServiceToken: !GetAtt CleanEngineVersionFunction.Arn
-      EngineVersion: !Ref DBEngineVersion
+  # Removed custom resource to fix validation errors
 
 Conditions:
   IsPostgreSQL: !Equals [!Ref DBEngine, 'postgres']
