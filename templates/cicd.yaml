@@ -40,10 +40,7 @@ Parameters:
     Default: ''
     Description: SSH key name for EC2 instances
   
-  GithubRepository:
-    Type: String
-    Default: your-org/your-repo
-    Description: GitHub repository for CI/CD integration
+  # GithubRepository parameter removed as it's not used
   
   CodeDeployGroupName:
     Type: String

@@ -12,9 +12,7 @@ Parameters:
     Default: dr
     Description: Deployment environment
   
-  VpcId:
-    Type: String
-    Description: VPC ID for database resources
+  # VpcId parameter removed as it's not used
   
   DatabaseSubnets:
     Type: List<String>
@@ -32,10 +30,7 @@ Parameters:
       - mysql
     Description: Database engine
   
-  DBEngineVersion:
-    Type: String
-    Default: 15.4
-    Description: Database engine version
+  # DBEngineVersion parameter removed as it's not used
   
   DBInstanceClass:
     Type: String
@@ -95,7 +90,7 @@ Resources:
       MultiAZ: !If [IsMultiAZEnabled, true, false]
       BackupRetentionPeriod: !Ref ReplicaBackupRetentionPeriod
       EnablePerformanceInsights: true
-      StorageEncrypted: true
+      # StorageEncrypted removed as it shouldn't be included with SourceDBInstanceIdentifier
       CopyTagsToSnapshot: true
       EnableCloudwatchLogsExports: !If
         - IsPostgreSQL

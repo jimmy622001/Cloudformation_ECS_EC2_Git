@@ -127,7 +127,7 @@ Resources:
       FunctionName: !Sub ${ProjectName}-${Environment}-dr-scale-up
       Handler: index.handler
       Role: !GetAtt DRLambdaRole.Arn
-      Runtime: nodejs18.x
+      Runtime: nodejs22.x
       Timeout: 300
       MemorySize: 256
       Environment:
@@ -261,7 +261,7 @@ Resources:
       FunctionName: !Sub ${ProjectName}-${Environment}-dr-test-cleanup
       Handler: index.handler
       Role: !GetAtt DRLambdaRole.Arn
-      Runtime: nodejs18.x
+      Runtime: nodejs22.x
       Timeout: 300
       MemorySize: 256
       Environment:
