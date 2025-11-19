@@ -217,8 +217,6 @@ Resources:
       PubliclyAccessible: false
       MultiAZ: !Ref DBMultiAZ
       BackupRetentionPeriod: !If [IsProd, 30, 7]
-      PreferredBackupWindow: '03:00-04:00'
-      PreferredMaintenanceWindow: 'sun:04:30-sun:05:30'
       DeletionProtection: !If [IsProd, true, false]
       EnablePerformanceInsights: !Ref EnablePerformanceInsights
       MonitoringInterval: 60

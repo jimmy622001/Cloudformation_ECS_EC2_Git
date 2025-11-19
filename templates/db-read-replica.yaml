@@ -62,6 +62,7 @@ Parameters:
     Description: Enable Multi-AZ deployment for DR read replica
 
 Conditions:
+  IsPostgreSQL: !Equals [!Ref DBEngine, 'postgres']
   IsMultiAZEnabled: !Equals [!Ref MultiAZ, 'true']
 
 Resources:
@@ -96,9 +97,10 @@ Resources:
       EnablePerformanceInsights: true
       StorageEncrypted: true
       CopyTagsToSnapshot: true
-      EnableCloudwatchLogsExports:
-        - !If [!Equals [!Ref DBEngine, 'postgres'], 'postgresql', 'error']
-        - !If [!Equals [!Ref DBEngine, 'postgres'], 'upgrade', 'general']
+      EnableCloudwatchLogsExports: !If
+        - IsPostgreSQL
+        - ['postgresql', 'upgrade']
+        - ['error', 'general']
       Tags:
         - Key: Name
           Value: !Sub ${ProjectName}-${Environment}-read-replica

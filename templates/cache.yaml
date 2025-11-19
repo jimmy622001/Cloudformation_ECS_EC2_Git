@@ -108,7 +108,6 @@ Resources:
           Value: !Ref ProjectName
 
   # Update the secret directly with cache information
-  # Use AWS::SecretsManager::Secret directly instead of SecretVersionAttachment
   CacheCredentialsSecretUpdate:
     Type: AWS::SecretsManager::Secret
     Properties:

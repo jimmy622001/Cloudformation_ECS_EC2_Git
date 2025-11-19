@@ -74,7 +74,6 @@ Parameters:
   
   JenkinsAMI:
     Type: String
-    Default: 'ami-0533def961e8503da'  # Amazon Linux 2 AMI in us-east-1
     Description: Amazon Linux 2 AMI ID
 
 Conditions:

@@ -112,7 +112,6 @@ Parameters:
   
   ECSOptimizedAMI:
     Type: String
-    Default: 'ami-05f547fc86666ec26'  # ECS-optimized Amazon Linux 2 in us-east-1
     Description: ECS-optimized Amazon Linux 2 AMI ID
 
 Conditions:
@@ -121,6 +120,7 @@ Conditions:
   HasCustomCert: !Not [!Equals [!Ref ACMCertificateARN, '']]
   NeedsNewCertificate: !And [!Equals [!Ref CreateDummyCert, 'true'], !Equals [!Ref ACMCertificateARN, '']]
   IsProd: !Equals [!Ref Environment, 'prod']
+  IsProduction: !Equals [!Ref Environment, 'prod']
 
 Resources:
   # ECS Cluster
@@ -252,7 +252,7 @@ Resources:
         - Key: idle_timeout.timeout_seconds
           Value: '60'
         - Key: deletion_protection.enabled
-          Value: !If [IsProd, 'true', 'false']
+          Value: 'false'
       SecurityGroups:
         - !Ref ALBSecurityGroup
       Subnets: !Split [',', !Ref PublicSubnets]
