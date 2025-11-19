@@ -111,7 +111,7 @@ Parameters:
     Description: ARN of existing ACM certificate
   
   ECSOptimizedAMI:
-    Type: AWS::EC2::Image::Id
+    Type: String
     Default: 'ami-05f547fc86666ec26'  # ECS-optimized Amazon Linux 2 in us-east-1
     Description: ECS-optimized Amazon Linux 2 AMI ID
 

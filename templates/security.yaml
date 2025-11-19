@@ -303,7 +303,7 @@ Resources:
             Resource: '*'
             Condition:
               StringNotEquals:
-                aws:PrincipalOrgID: !Sub '${AWS::AccountId}'
+                aws:PrincipalOrgID: !Sub "#{AWS::AccountId}"
 
 Outputs:
   WebACLId:

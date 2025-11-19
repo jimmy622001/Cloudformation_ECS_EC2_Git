@@ -277,49 +277,7 @@ Resources:
         - Key: Project
           Value: !Ref ProjectName
   
-  # Lambda function to clean engine version for parameter group family
-  CleanEngineVersionFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      Handler: index.handler
-      Runtime: python3.9
-      Role: !GetAtt CleanEngineVersionRole.Arn
-      Code:
-        ZipFile: |
-          import json
-          import cfnresponse
-          
-          def handler(event, context):
-              responseData = {}
-              
-              if event['RequestType'] == 'Delete':
-                  cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
-                  return
-              
-              try:
-                  engine_version = event['ResourceProperties']['EngineVersion']
-                  # Replace dots with nothing to match parameter group family convention
-                  clean_version = engine_version.replace('.', '')
-                  responseData['CleanVersion'] = clean_version
-                  cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
-              except Exception as e:
-                  cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": str(e)})
-      Timeout: 30
-
-  CleanEngineVersionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-
-  # Removed custom resource to fix validation errors
+  # Removed custom resource for cleaning engine version since we're using hardcoded family names
 
 Conditions:
   IsPostgreSQL: !Equals [!Ref DBEngine, 'postgres']
