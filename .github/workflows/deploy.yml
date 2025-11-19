@@ -18,7 +18,8 @@ on:
   push:
     branches:
       - main
-      - master
+      - dev
+      - dr-pilot-light
     paths:
       - 'templates/**'
       - '*.json'
@@ -99,9 +100,15 @@ jobs:
             fi
           else
             # For push events, use the branch
-            if [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/master" ]]; then
+            if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
               echo "ENV=prod" >> $GITHUB_ENV
               echo "PARAM_FILE=prod-parameters.json" >> $GITHUB_ENV
+            elif [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+              echo "ENV=dev" >> $GITHUB_ENV
+              echo "PARAM_FILE=dev-parameters.json" >> $GITHUB_ENV
+            elif [[ "${{ github.ref }}" == "refs/heads/dr-pilot-light" ]]; then
+              echo "ENV=dr" >> $GITHUB_ENV
+              echo "PARAM_FILE=dr-parameters.json" >> $GITHUB_ENV
             else
               echo "ENV=dev" >> $GITHUB_ENV
               echo "PARAM_FILE=dev-parameters.json" >> $GITHUB_ENV
