@@ -91,11 +91,15 @@ Resources:
       KeyName: !If [HasKeyPair, !Ref KeyPairName, !Ref 'AWS::NoValue']
       IamInstanceProfile: !Ref JenkinsInstanceProfile
       NetworkInterfaces:
-        - AssociatePublicIpAddress: true
+        - AssociatePublicIpAddress: false
           DeviceIndex: 0
           GroupSet:
             - !Ref JenkinsSecurityGroup
           SubnetId: !Select [0, !Split [',', !Ref PublicSubnets]]
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+        HttpPutResponseHopLimit: 1
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
@@ -283,6 +287,30 @@ Resources:
           Value: !Ref ProjectName
 
   # S3 Bucket for Artifacts
+  LoggingBucket:
+    Type: AWS::S3::Bucket
+    # checkov:skip=CKV_AWS_18: This is a logging destination bucket, adding logging would create a circular dependency
+    Properties:
+      BucketName: !Sub '${ProjectName}-${Environment}-s3-logging-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-s3-logging'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
   ArtifactBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -298,6 +326,9 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+      LoggingConfiguration:
+        DestinationBucketName: !Ref LoggingBucket
+        LogFilePrefix: artifacts-logs/
       LifecycleConfiguration:
         Rules:
           - Id: DeleteOldArtifacts
@@ -330,11 +361,51 @@ Resources:
                 aws:SecureTransport: false
 
   # CloudWatch Log Group for Jenkins
+  LogsKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub 'KMS key for ${ProjectName}-${Environment} logs encryption'
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow CloudWatch Logs
+            Effect: Allow
+            Principal:
+              Service: logs.amazonaws.com
+            Action:
+              - 'kms:Encrypt*'
+              - 'kms:Decrypt*'
+              - 'kms:ReEncrypt*'
+              - 'kms:GenerateDataKey*'
+              - 'kms:Describe*'
+            Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-logs-kms'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
+  LogsKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${ProjectName}-${Environment}-logs'
+      TargetKeyId: !Ref LogsKMSKey
+  
   JenkinsLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/jenkins/${ProjectName}-${Environment}'
       RetentionInDays: 30
+      KmsKeyId: !GetAtt LogsKMSKey.Arn
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-jenkins-logs'

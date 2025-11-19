@@ -1,104 +1,95 @@
-# Security Scanning for CloudFormation Templates
+# CloudFormation Security Scanning
 
-This document explains the security scanning tools set up for this CloudFormation project and how to use them.
+This document describes the security scanning tools available in this project to check CloudFormation templates for security issues before pushing to GitHub.
 
-## Available Security Tools
+## Available Security Scan Scripts
 
-### 1. Local Scanning Tools
+### 1. Quick Security Scan (Recommended for daily use)
 
-#### Using the Integrated Script
-Run the `security-scan.bat` script for quick local scanning:
+Run the quick security scan for faster feedback during development:
 
-```bash
-./security-scan.bat
+```
+quick-security-scan.bat
 ```
 
-This script installs and runs:
-- cfn-lint: Validates CloudFormation template syntax and best practices
-- Checkov: Scans for security and compliance issues
+This performs the most essential checks:
+- CloudFormation Linting (cfn-lint)
+- Security scanning with Checkov
 
-#### Manual Tool Installation
+### 2. Template Validation
 
-If you prefer to install and run tools individually:
+Validate your CloudFormation templates with AWS:
 
-```bash
-# Install cfn-lint
-pip install cfn-lint
-
-# Install Checkov
-pip install checkov
-
-# Install CloudFormation Guard (requires Rust)
-cargo install cfn-guard
-
-# Install trufflehog for secret detection
-pip install trufflehog
+```
+validate-template.bat
 ```
 
-### 2. GitHub Actions Workflows
+### 3. CloudFormation Linting Only
 
-The following automated workflows run when code is pushed or on a schedule:
+Use this for a quick check of template syntax and best practices:
 
-- **cfn-lint**: Validates CloudFormation template syntax
-- **Checkov**: Performs security and compliance checks
-- **CloudFormation Guard**: Validates templates against security policies
-- **SonarCloud**: Provides code quality and security analysis
-- **OWASP Dependency-Check**: Scans for vulnerable dependencies
-- **CloudSploit**: Scans AWS environment for security issues
+```
+cfn-lint-check.bat
+```
 
-## Setup Requirements
+### 4. Full Security Scan (Comprehensive) 
 
-### For GitHub Actions
+Run the full security scan to check for all possible security issues:
 
-1. **SonarCloud Integration**:
-   - Create a SonarCloud account and project at https://sonarcloud.io
-   - Add your SonarCloud token as a GitHub Secret named `SONAR_TOKEN`
-   - Update the organization and project key in `.github/workflows/sonarcloud.yml`
+```
+python run_all_security_scans.py
+```
 
-2. **CloudSploit/AWS Integration**:
-   - Add AWS credentials as GitHub Secrets:
-     - `AWS_ACCESS_KEY_ID`
-     - `AWS_SECRET_ACCESS_KEY`
-   - Ensure the AWS user has read-only permissions
+This comprehensive scan includes:
+- CloudFormation Linting (cfn-lint)
+- Security scanning with Checkov
+- Rule-based validation with CloudFormation Guard
+- Secret detection with detect-secrets
+- Dependency checking with OWASP Dependency Check
 
-## Understanding Results
+**Note:** The full scan may take several minutes to complete and requires multiple tools to be installed.
 
-### Security Issue Severity
+## Prerequisites
 
-Issues are typically categorized as:
+The security scanning scripts will attempt to install the required tools if they're missing. The following tools are used:
 
-- **Critical**: Must be fixed immediately
-- **High**: Should be fixed as soon as possible
-- **Medium**: Should be planned for remediation
-- **Low**: Consider fixing in future updates
-- **Info**: Informational findings
+- Python 3.7+
+- cfn-lint - For template syntax and best practice validation
+- checkov - For security scanning
+- detect-secrets - For detecting secrets (full scan only)
+- cfn-guard - For rule-based validation (full scan only)
+- OWASP Dependency Check - For vulnerability scanning (full scan only)
 
-### Common CloudFormation Security Issues
+## Recommended Workflow
 
-1. **Unencrypted Resources**: Storage, databases, or snapshots without encryption
-2. **Overly Permissive IAM Policies**: Using wildcards (`"*"`) in IAM policies
-3. **Open Security Groups**: Unrestricted ingress/egress rules (0.0.0.0/0)
-4. **Unprotected S3 Buckets**: Missing encryption or public access blocks
-5. **Insecure Communication**: Services configured without TLS/SSL
+1. During development, use `cfn-lint-check.bat` or `quick-security-scan.bat` for fast feedback
+2. Before committing, run `validate-template.bat` to ensure templates are valid
+3. Before pushing to the repository, run the full security scan with `python run_all_security_scans.py`
 
-## Integration with CI/CD
+## Resolving Security Issues
 
-These security tools can be integrated with Jenkins or other CI/CD systems:
+When security issues are found:
 
-- **SonarQube**: Will scan on push to GitHub if configured correctly
-- **OWASP Dependency-Check**: Will scan on push to GitHub if configured correctly
+1. Review the scan output to understand the specific issues
+2. Make the necessary changes to your CloudFormation templates
+3. Run the scan again to confirm the issues are resolved
+4. Push your changes to GitHub only after all security checks pass
 
-## Best Practices
+## Common Security Issues
 
-1. **Pre-commit Scanning**: Run local scans before pushing changes
-2. **Regular Scheduled Scans**: Use scheduled GitHub Actions
-3. **Fix Critical Issues**: Immediately address critical security findings
-4. **Review False Positives**: Document deliberate exceptions
-5. **Update Scanners**: Keep security tools up to date
+- Unrestricted security group rules (0.0.0.0/0)
+- Unencrypted resources (S3, RDS, etc.)
+- Overly permissive IAM policies (using wildcards *)
+- Hard-coded secrets or credentials
+- Missing logging configurations
 
-## Additional Resources
+## Maintaining Security Scripts
 
-- [AWS CloudFormation Best Practices](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/best-practices.html)
-- [OWASP Cloud Security](https://owasp.org/www-project-cloud-security/)
-- [CIS AWS Benchmarks](https://www.cisecurity.org/benchmark/amazon_web_services/)
-- [AWS Well-Architected Framework](https://aws.amazon.com/architecture/well-architected/)
+The security scanning scripts in this repository are:
+
+- `run_all_security_scans.py` - The main comprehensive security scan
+- `cfn-lint-check.bat` - Quick syntax and best practice checks
+- `quick-security-scan.bat` - Basic security checks for daily use
+- `validate-template.bat` - AWS CloudFormation validation
+
+If you need to add additional security checks, consider extending these scripts rather than creating new ones to avoid confusion.

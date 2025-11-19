@@ -1,10 +1,9 @@
 @echo off
-echo Running CloudFormation Security Scan...
-python secure_cloudformation.py --scan-only %*
-
-if %errorlevel% neq 0 (
-    echo.
-    echo Security issues found! To fix, run: python secure_cloudformation.py --fix
+echo Running CloudFormation Security Scanner...
+python run_all_security_scans.py
+if %ERRORLEVEL% NEQ 0 (
+  echo Security scan failed with issues. Please fix before pushing to GitHub.
+  exit /b %ERRORLEVEL%
+) else (
+  echo Security scan completed successfully. Safe to push to GitHub.
 )
-
-pause

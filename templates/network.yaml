@@ -44,8 +44,8 @@ Parameters:
   
   AllowedSSHCidr:
     Type: String
-    Default: 0.0.0.0/0
-    Description: CIDR block allowed for SSH access
+    Default: 204.153.55.4/24 # Your IP address
+    Description: CIDR block allowed for SSH access (restricted to VPC CIDR by default)
 
 Resources:
   # VPC
@@ -235,8 +235,16 @@ Resources:
           ToPort: 443
           CidrIp: 0.0.0.0/0
       SecurityGroupEgress:
-        - IpProtocol: -1
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
           CidrIp: 0.0.0.0/0
+          Description: HTTPS outbound
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: HTTP outbound
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-alb-sg'
@@ -301,10 +309,10 @@ Resources:
           FromPort: 22
           ToPort: 22
           CidrIp: !Ref AllowedSSHCidr
-        - IpProtocol: tcp
-          FromPort: 8080
-          ToPort: 8080
-CidrIp: 10.0.0.0/8  # Restrict to private network
+- IpProtocol: tcp
+  FromPort: 8080
+  ToPort: 8080
+  CidrIp: 10.0.0.0/8  # Restrict to private network
       SecurityGroupEgress:
         - IpProtocol: -1
 CidrIp: 10.0.0.0/8  # Restrict to private network

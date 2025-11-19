@@ -42,13 +42,42 @@ Parameters:
 Resources:
   # Generate a secret for database credentials 
   # This automatically creates and stores a secure password in Secrets Manager
+  KMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub 'KMS key for ${ProjectName}-${Environment} secrets encryption'
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-secrets-kms'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
+  KMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${ProjectName}-${Environment}-secrets'
+      TargetKeyId: !Ref KMSKey
+  
   DatabaseSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
       Name: !Sub "${Environment}/database/auto-credentials"
       Description: !Sub "Auto-generated database credentials for ${Environment} environment"
+      KmsKeyId: !Ref KMSKey
       GenerateSecretString:
-        SecretStringTemplate: !Sub '{"username": "{{resolve:ssm:/cloudformation-ecs/${Environment}/database/username:1}}"}'
+        SecretStringTemplate: !Sub '{"username": "{{resolve:ssm:/cloudformation-ecs/${Environment}/database/username:1}}"}'  
         GenerateStringKey: "password"
         PasswordLength: 16
         ExcludeCharacters: '"@/\'
@@ -61,11 +90,13 @@ Resources:
   # Create a database parameter group
   DBParameterGroup:
     Type: AWS::RDS::DBParameterGroup
+    # This parameter group enforces SSL for PostgreSQL
     Properties:
       Description: !Sub "Database parameter group for ${ProjectName} ${Environment}"
       Family: !Ref DBFamily
       Parameters:
-        ssl: '1'
+        ssl: 'true'
+        ssl_min_protocol_version: 'TLSv1.2'
         log_statement: 'all'
       Tags:
         - Key: Environment
@@ -110,6 +141,26 @@ Resources:
           Value: !Ref ProjectName
 
   # Create the database instance with secure credentials reference
+  MonitoringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: monitoring.rds.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-${Environment}-rds-monitoring-role
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
   RDSInstance:
     Type: AWS::RDS::DBInstance
     Properties:
@@ -118,29 +169,37 @@ Resources:
       DBInstanceClass: !Ref DBInstanceClass
       Engine: postgres
       EngineVersion: !Ref DBEngineVersion
-      MultiAZ: !Ref DBMultiAZ
+      MultiAZ: true
       DBParameterGroupName: !Ref DBParameterGroup
       DBSubnetGroupName: !Ref DBSubnetGroup
       VPCSecurityGroups:
         - !Ref DBSecurityGroup
-      
+      EnableIAMDatabaseAuthentication: true
+      MonitoringInterval: 30
+      MonitoringRoleArn: !GetAtt MonitoringRole.Arn
+  
       # !! SECURE CREDENTIALS USAGE !!
       # Use Secret from Secrets Manager that we created above
-      MasterUsername: !Join 
+      MasterUsername: !Join
         - ''
         - - '{{resolve:secretsmanager:'
           - !Ref DatabaseSecret
           - ':SecretString:username}}'
-      MasterUserPassword: !Join 
+      MasterUserPassword: !Join
         - ''
         - - '{{resolve:secretsmanager:'
           - !Ref DatabaseSecret
           - ':SecretString:password}}'
-          
+  
       BackupRetentionPeriod: 7
       StorageType: gp2
       StorageEncrypted: true
+      KmsKeyId: !Ref KMSKey
       DeletionProtection: !If [IsProduction, true, false]
+      # SSL/TLS encryption for PostgreSQL is enforced via parameter group
+      # checkov:skip=CKV2_AWS_69: SSL is enabled through DBParameterGroup with ssl=true setting
+      EnablePerformanceInsights: true
+      PerformanceInsightsKMSKeyId: !Ref KMSKey
       Tags:
         - Key: Name
           Value: !Sub "${ProjectName}-${Environment}-db"

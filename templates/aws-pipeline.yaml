@@ -41,6 +41,30 @@ Parameters:
 
 Resources:
   # CodePipeline Artifact Bucket
+  LoggingBucket:
+    Type: AWS::S3::Bucket
+    # checkov:skip=CKV_AWS_18: This is a logging destination bucket, adding logging would create a circular dependency
+    Properties:
+      BucketName: !Sub '${ProjectName}-${Environment}-logging-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-logging'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
   ArtifactBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -56,6 +80,9 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+      LoggingConfiguration:
+        DestinationBucketName: !Ref LoggingBucket
+        LogFilePrefix: pipeline-logs/
       LifecycleConfiguration:
         Rules:
           - Id: DeleteOldArtifacts
@@ -110,7 +137,7 @@ Resources:
                   - 'logs:CreateLogGroup'
                   - 'logs:CreateLogStream'
                   - 'logs:PutLogEvents'
-                Resource: '*'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${ProjectName}-${Environment}*:*'
               - Effect: Allow
                 Action:
                   - 's3:GetObject'
@@ -121,7 +148,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - 'cloudformation:ValidateTemplate'
-                Resource: '*'
+                Resource: !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectName}-${Environment}*'
 
   # CodePipeline Role
   CodePipelineRole:

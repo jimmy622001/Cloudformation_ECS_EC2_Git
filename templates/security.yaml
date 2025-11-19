@@ -100,8 +100,22 @@ Resources:
               VendorName: AWS
               Name: AWSManagedRulesSQLiRuleSet
               ExcludedRules: []
-        - Name: RateLimitRule
+        # Log4j Protection Rule
+        - Name: AWSKnownBadInputs
           Priority: 2
+          OverrideAction:
+            None: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSKnownBadInputs
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesKnownBadInputsRuleSet
+              ExcludedRules: []
+        - Name: RateLimitRule
+          Priority: 3
           Action:
             Block: {}
           VisibilityConfig:
@@ -161,6 +175,32 @@ Resources:
       ResourceArn: !Ref AlbArn
       WebACLArn: !GetAtt WebACL.Arn
 
+  # S3 Bucket for logging
+  LoggingBucket:
+    Type: AWS::S3::Bucket
+    Condition: ShouldEnableConfig
+    # checkov:skip=CKV_AWS_18: This is a logging destination bucket, adding logging would create a circular dependency
+    Properties:
+      BucketName: !Sub '${ProjectName}-${Environment}-config-logs-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-config-logs'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
   # S3 Bucket for AWS Config
   ConfigBucket:
     Type: AWS::S3::Bucket
@@ -178,6 +218,9 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+      LoggingConfiguration:
+        DestinationBucketName: !Ref LoggingBucket
+        LogFilePrefix: config-logs/
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-config'

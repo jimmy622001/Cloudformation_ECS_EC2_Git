@@ -1,5 +1,16 @@
 @echo off
-echo Validating CloudFormation template...
-aws cloudformation validate-template --template-body file://templates/master.yaml
+echo Validating CloudFormation templates...
 
-echo Validation complete!
+REM Validate master template
+echo Validating master.yaml
+aws cloudformation validate-template --template-body file://templates/master.yaml
+if %ERRORLEVEL% neq 0 goto :error
+
+echo All templates validated successfully!
+goto :end
+
+:error
+echo ERROR: Template validation failed.
+exit /b %ERRORLEVEL%
+
+:end

@@ -73,19 +73,21 @@ Resources:
                   - 'cloudformation:ListStackResources'
                   - 'cloudformation:DeleteStack'
                   - 'cloudformation:DeleteChangeSet'
-                Resource: '*'
+                Resource: !Sub 'arn:aws:cloudformation:*:${AWS::AccountId}:stack/${ProjectName}-*'
               - Effect: Allow
                 Action:
                   - 's3:CreateBucket'
                   - 's3:PutObject'
                   - 's3:GetObject'
                   - 's3:ListBucket'
-                Resource: '*'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${ProjectName}*'
+                  - !Sub 'arn:aws:s3:::${ProjectName}*/*'
               - Effect: Allow
                 Action:
                   - 'iam:PassRole'
                   - 'iam:GetRole'
-                Resource: '*'
+                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ProjectName}*'
 
 Outputs:
   GitHubActionsRoleArn:

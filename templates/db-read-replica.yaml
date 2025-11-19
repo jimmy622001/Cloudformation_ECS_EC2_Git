@@ -76,6 +76,26 @@ Resources:
           Value: !Ref Environment
 
   # Read replica for DR
+  MonitoringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: monitoring.rds.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-${Environment}-rds-monitoring-role
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
   DBReadReplica:
     Type: AWS::RDS::DBInstance
     Properties:
@@ -87,10 +107,14 @@ Resources:
       DBSubnetGroupName: !Ref DBSubnetGroup
       VPCSecurityGroups:
         - !Ref DBSecurityGroupId
-      MultiAZ: !If [IsMultiAZEnabled, true, false]
+      MultiAZ: true
       BackupRetentionPeriod: !Ref ReplicaBackupRetentionPeriod
       EnablePerformanceInsights: true
-      # StorageEncrypted removed as it shouldn't be included with SourceDBInstanceIdentifier
+      EnableIAMDatabaseAuthentication: true
+      MonitoringInterval: 30
+      MonitoringRoleArn: !GetAtt MonitoringRole.Arn
+      # Note: StorageEncryption is inherited from the source DB instance
+      # checkov:skip=CKV_AWS_16: Storage encryption is inherited from the primary DB instance
       CopyTagsToSnapshot: true
       EnableCloudwatchLogsExports: !If
         - IsPostgreSQL
@@ -107,10 +131,47 @@ Resources:
           Value: true
 
   # SNS Topic for replication failures
+  SNSTopicKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub 'KMS key for ${ProjectName}-${Environment} SNS topic encryption'
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow SNS Service
+            Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action:
+              - 'kms:GenerateDataKey*'
+              - 'kms:Decrypt'
+            Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-db-sns-kms'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
+  SNSTopicKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${ProjectName}-${Environment}-db-sns'
+      TargetKeyId: !Ref SNSTopicKMSKey
+  
   ReplicationFailuresTopic:
     Type: AWS::SNS::Topic
     Properties:
       TopicName: !Sub ${ProjectName}-${Environment}-replication-failures
+      KmsMasterKeyId: !Ref SNSTopicKMSKey
       Tags:
         - Key: Project
           Value: !Ref ProjectName

@@ -50,12 +50,16 @@ def run_command(command, shell=False):
 
 def check_tool_installed(tool_name, check_command):
     print_section(f"Checking if {tool_name} is installed...")
-    return_code, stdout, stderr = run_command(check_command, shell=True)
-    if return_code != 0:
-        print_warning(f"{tool_name} is not installed or not in PATH.")
+    try:
+        return_code, stdout, stderr = run_command(check_command, shell=True)
+        if return_code != 0:
+            print_warning(f"{tool_name} is not installed or not in PATH.")
+            return False
+        print_success(f"{tool_name} is installed: {stdout.strip()}")
+        return True
+    except Exception as e:
+        print_warning(f"Error checking {tool_name}: {str(e)}")
         return False
-    print_success(f"{tool_name} is installed: {stdout.strip()}")
-    return True
 
 def install_tool(tool_name, install_command):
     print_section(f"Installing {tool_name}...")
@@ -128,7 +132,11 @@ rule lambda_dlq when resourceType == "AWS::Lambda::Function" {
 
 def run_cfn_lint():
     print_section("Running CloudFormation Linter (cfn-lint)...")
-    return_code, stdout, stderr = run_command(["python", "-m", "cfnlint", "templates/*.yaml"], shell=True)
+    # Fix: Don't use shell=True when passing a list, and change command format
+    if platform.system() == "Windows":
+        return_code, stdout, stderr = run_command("cfn-lint templates\\*.yaml", shell=True)
+    else:
+        return_code, stdout, stderr = run_command("cfn-lint templates/*.yaml", shell=True)
     if return_code != 0:
         print_error(f"CloudFormation Linter found issues:\n{stdout}\n{stderr}")
         return False
@@ -137,7 +145,10 @@ def run_cfn_lint():
 
 def run_checkov():
     print_section("Running Checkov Security Scanner...")
-    return_code, stdout, stderr = run_command(["checkov", "-d", "templates/", "--framework", "cloudformation"], shell=True)
+    if platform.system() == "Windows":
+        return_code, stdout, stderr = run_command("checkov -d templates\ --framework cloudformation", shell=True)
+    else:
+        return_code, stdout, stderr = run_command("checkov -d templates/ --framework cloudformation", shell=True)
     
     print(stdout)
     if stderr:
@@ -152,18 +163,22 @@ def run_checkov():
 
 def run_cfn_guard():
     print_section("Running CloudFormation Guard...")
-    
+
     # First check if we have rules file
     if not os.path.exists("security-rules.guard"):
         create_basic_guard_rules()
-    
+
     # Get all template files
     template_files = list(Path("templates").glob("*.yaml"))
-    
+
     all_pass = True
     for template in template_files:
         print(f"Scanning {template}...")
-        return_code, stdout, stderr = run_command(["cfn-guard", "validate", "-r", "security-rules.guard", "-d", str(template), "--show-summary", "all"], shell=True)
+        if platform.system() == "Windows":
+            command = f"cfn-guard validate -r security-rules.guard -d {template} --show-summary all"
+        else:
+            command = f"cfn-guard validate -r security-rules.guard -d {template} --show-summary all"
+        return_code, stdout, stderr = run_command(command, shell=True)
         
         print(stdout)
         if stderr:
@@ -182,7 +197,10 @@ def run_cfn_guard():
 
 def run_detect_secrets():
     print_section("Running detect-secrets for secret scanning...")
-    return_code, stdout, stderr = run_command(["detect-secrets", "scan", ">", "secrets-scan-results.json"], shell=True)
+    if platform.system() == "Windows":
+        return_code, stdout, stderr = run_command("detect-secrets scan > secrets-scan-results.json", shell=True)
+    else:
+        return_code, stdout, stderr = run_command("detect-secrets scan > secrets-scan-results.json", shell=True)
     
     try:
         with open("secrets-scan-results.json", "r") as f:
@@ -202,16 +220,13 @@ def run_detect_secrets():
 
 def run_owasp_dependency_check():
     print_section("Running OWASP Dependency Check...")
-    args = [
-        "dependency-check",
-        "--project", "CloudFormation-Project",
-        "--scan", "templates/",
-        "--enableExperimental",
-        "--out", "reports",
-        "--format", "HTML"
-    ]
-    
-    return_code, stdout, stderr = run_command(args, shell=True)
+
+    if platform.system() == "Windows":
+        command = "dependency-check --project CloudFormation-Project --scan templates\ --enableExperimental --out reports --format HTML"
+    else:
+        command = "dependency-check --project CloudFormation-Project --scan templates/ --enableExperimental --out reports --format HTML"
+
+    return_code, stdout, stderr = run_command(command, shell=True)
     
     print(stdout)
     if stderr:
@@ -238,7 +253,7 @@ def check_install_prerequisites():
     installed_tools["pip"] = check_tool_installed("pip", "pip --version")
     
     # Check for Python tools
-    installed_tools["cfn-lint"] = check_tool_installed("cfn-lint", "python -m cfnlint --version")
+    installed_tools["cfn-lint"] = check_tool_installed("cfn-lint", "cfn-lint --version")
     installed_tools["checkov"] = check_tool_installed("checkov", "checkov --version")
     installed_tools["detect-secrets"] = check_tool_installed("detect-secrets", "detect-secrets --version")
     

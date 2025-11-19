@@ -208,11 +208,48 @@ Resources:
       SourceArn: !GetAtt HealthCheckEventRule.Arn
 
   # SNS Topic for health alarms
+  SNSTopicKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub 'KMS key for ${ProjectName}-${Environment} SNS topic encryption'
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow SNS Service
+            Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action:
+              - 'kms:GenerateDataKey*'
+              - 'kms:Decrypt'
+            Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-sns-kms'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
+  SNSTopicKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${ProjectName}-${Environment}-sns'
+      TargetKeyId: !Ref SNSTopicKMSKey
+  
   HealthAlarmSNSTopic:
     Type: AWS::SNS::Topic
     Properties:
       DisplayName: !Sub ${ProjectName}-${Environment}-health-alarms
       TopicName: !Sub ${ProjectName}-${Environment}-health-alarms
+      KmsMasterKeyId: !Ref SNSTopicKMSKey
       Tags:
         - Key: Project
           Value: !Ref ProjectName
