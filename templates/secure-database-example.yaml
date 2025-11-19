@@ -1,0 +1,190 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Example template demonstrating secure handling of database credentials'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, test, prod, dr]
+    Description: Deployment environment
+
+  ProjectName:
+    Type: String
+    Default: cloudformation-ecs
+    Description: Project name used for resource naming
+
+  DBInstanceClass:
+    Type: String
+    Default: db.t3.micro
+    Description: Database instance class
+
+  DBAllocatedStorage:
+    Type: Number
+    Default: 20
+    Description: Allocated storage in GB
+
+  DBEngineVersion:
+    Type: String
+    Default: 13.7
+    Description: Database engine version
+    
+  DBFamily:
+    Type: String
+    Default: postgres13
+    Description: Database parameter group family
+
+  DBMultiAZ:
+    Type: String
+    Default: false
+    AllowedValues: [true, false]
+    Description: Whether to deploy in multiple availability zones
+
+Resources:
+  # Generate a secret for database credentials 
+  # This automatically creates and stores a secure password in Secrets Manager
+  DatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${Environment}/database/auto-credentials"
+      Description: !Sub "Auto-generated database credentials for ${Environment} environment"
+      GenerateSecretString:
+        SecretStringTemplate: !Sub '{"username": "{{resolve:ssm:/cloudformation-ecs/${Environment}/database/username:1}}"}'
+        GenerateStringKey: "password"
+        PasswordLength: 16
+        ExcludeCharacters: '"@/\'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Create a database parameter group
+  DBParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Description: !Sub "Database parameter group for ${ProjectName} ${Environment}"
+      Family: !Ref DBFamily
+      Parameters:
+        ssl: '1'
+        log_statement: 'all'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Create a database subnet group
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub "Subnet group for ${ProjectName} ${Environment} database"
+      SubnetIds:
+        # Use CloudFormation parameter references
+        - '{{resolve:ssm:/cloudformation-ecs/${Environment}/network/database-subnet-1:1}}'
+        - '{{resolve:ssm:/cloudformation-ecs/${Environment}/network/database-subnet-2:1}}'
+        - '{{resolve:ssm:/cloudformation-ecs/${Environment}/network/database-subnet-3:1}}'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Create a security group for the database
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "Security group for ${ProjectName} ${Environment} database"
+      VpcId: '{{resolve:ssm:/cloudformation-ecs/${Environment}/network/vpc-id:1}}'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: '{{resolve:ssm:/cloudformation-ecs/${Environment}/security/app-security-group-id:1}}'
+          Description: "Allow access from application"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-db-sg"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Create the database instance with secure credentials reference
+  RDSInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub "${ProjectName}-${Environment}"
+      AllocatedStorage: !Ref DBAllocatedStorage
+      DBInstanceClass: !Ref DBInstanceClass
+      Engine: postgres
+      EngineVersion: !Ref DBEngineVersion
+      MultiAZ: !Ref DBMultiAZ
+      DBParameterGroupName: !Ref DBParameterGroup
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref DBSecurityGroup
+      
+      # !! SECURE CREDENTIALS USAGE !!
+      # Use Secret from Secrets Manager that we created above
+      MasterUsername: !Join 
+        - ''
+        - - '{{resolve:secretsmanager:'
+          - !Ref DatabaseSecret
+          - ':SecretString:username}}'
+      MasterUserPassword: !Join 
+        - ''
+        - - '{{resolve:secretsmanager:'
+          - !Ref DatabaseSecret
+          - ':SecretString:password}}'
+          
+      BackupRetentionPeriod: 7
+      StorageType: gp2
+      StorageEncrypted: true
+      DeletionProtection: !If [IsProduction, true, false]
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-db"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Store the connection information in SSM Parameter Store for reference by other stacks
+  DBConnectionStringParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/cloudformation-ecs/${Environment}/database/connection-string"
+      Type: "SecureString"
+      Value: !Sub "postgresql://{{resolve:secretsmanager:${DatabaseSecret}:SecretString:username}}:{{resolve:secretsmanager:${DatabaseSecret}:SecretString:password}}@${RDSInstance.Endpoint.Address}:${RDSInstance.Endpoint.Port}/postgres"
+      Description: !Sub "PostgreSQL connection string for ${Environment} environment"
+      Tags:
+        Environment: !Ref Environment
+        Project: !Ref ProjectName
+
+Conditions:
+  IsProduction: !Equals [!Ref Environment, 'prod']
+
+Outputs:
+  DBEndpoint:
+    Description: "Database endpoint address"
+    Value: !GetAtt RDSInstance.Endpoint.Address
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-db-endpoint"
+
+  DBPort:
+    Description: "Database port"
+    Value: !GetAtt RDSInstance.Endpoint.Port
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-db-port"
+      
+  DBSecretArn:
+    Description: "ARN of the database credentials secret"
+    Value: !Ref DatabaseSecret
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-db-secret-arn"
+      
+  DBConnectionStringParameterName:
+    Description: "SSM Parameter name for database connection string"
+    Value: !Sub "/cloudformation-ecs/${Environment}/database/connection-string"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-db-conn-param"

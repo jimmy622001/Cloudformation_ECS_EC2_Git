@@ -120,5 +120,22 @@ This CloudFormation project was converted from a Terraform project. The main dif
 ## Security Notes
 
 - The default SSH access is configured to allow access from any IP (0.0.0.0/0). For production environments, this should be restricted.
-- Secret values should be managed using AWS Secrets Manager or AWS Parameter Store.
-- In production environments, consider enabling encryption for all applicable resources.
+- Secret values are managed using AWS Secrets Manager and AWS Systems Manager Parameter Store.
+- In production environments, encryption is enabled for all applicable resources.
+
+## Secure Secrets Management
+
+This repository now includes enhanced security features for managing secrets. Please review the following files:
+
+- [SECURE_SECRETS_GUIDE.md](SECURE_SECRETS_GUIDE.md) - Comprehensive guide for secure secrets management
+- [security/setup-aws-secrets.sh](security/setup-aws-secrets.sh) - Script to securely store secrets in AWS Secrets Manager
+- [security/setup-secret-scanning.sh](security/setup-secret-scanning.sh) - Set up local secret scanning tools
+- [security/clean-repo-secrets.sh](security/clean-repo-secrets.sh) - Help clean sensitive data from repository history
+
+Make the scripts executable before using them:
+
+```bash
+chmod +x security/setup-aws-secrets.sh security/clean-repo-secrets.sh security/setup-secret-scanning.sh
+```
+
+**Important**: If you have found a security issue, please follow the procedure in [SECURE_SECRETS_GUIDE.md](SECURE_SECRETS_GUIDE.md).

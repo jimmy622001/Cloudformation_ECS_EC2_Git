@@ -1,11 +1,19 @@
 # Local parameter values or scripts with actual credentials
 *-secrets.sh
 *-credentials.sh
+*-values.sh
+my-*.sh
 *.env
 *.pem
 *.key
 *.tfvars
 env-specific/*.conf
+secrets/
+.secrets/
+*password*
+*secret*
+*credential*
+*token*
 
 # Local development configuration
 local-config/

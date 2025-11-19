@@ -1,67 +1,175 @@
-# Git Security Guidelines for CloudFormation Projects
+# Git Security Guidelines
 
-This document outlines best practices for storing CloudFormation templates and related files in GitHub or other version control systems.
+This document provides essential guidelines for working with Git repositories while maintaining security best practices, particularly regarding sensitive information.
 
-## Security Considerations
+## Never Commit Sensitive Information
 
-### 1. Parameter Management
+Never commit the following sensitive information to Git repositories:
 
-- **DO NOT** commit any files containing actual parameter values to GitHub, especially:
-  - Database credentials
-  - API keys
-  - SSH keys
-  - Domain certificates
-  - Personal access tokens
-  - IP addresses/CIDRs for restricted access
+- Passwords
+- API keys or tokens
+- Private keys (SSH, PGP, etc.)
+- Connection strings
+- AWS credentials
+- Personally identifiable information (PII)
+- Customer data
+- Infrastructure secrets or certificates
 
-- **DO** use AWS Systems Manager Parameter Store and AWS Secrets Manager for parameter storage
-  - Reference these parameters in templates using secure references
-  - Use IAM roles to control access to parameters
+## Use .gitignore Properly
 
-### 2. Configuration Files
+Add patterns to your `.gitignore` file to prevent accidental commits of sensitive files:
 
-- Store environment-specific configuration files separately from the code repository
-- Use placeholder values in templates and documentation
+```
+# Sensitive files
+*.pem
+*.key
+*.pfx
+*.p12
+*.cer
+*.crt
+*.env
+.env*
+*secrets*
+*credentials*
+*password*
+*token*
 
-### 3. Private vs. Public Repositories
+# Developer environments
+.vscode/
+.idea/
+*.swp
+*.swo
+```
 
-- Consider using a private repository if your infrastructure code contains:
-  - Internal network architecture
-  - Security group rules
-  - IAM policy details
-  - Any other information that could aid attackers
+## Configure Git According to Security Best Practices
 
-### 4. CI/CD Integration
+```bash
+# Enable signed commits if possible
+git config --global commit.gpgsign true
 
-- When integrating with CI/CD systems:
-  - Use environment variables for sensitive values
-  - Configure secrets in your CI/CD platform (e.g., GitHub Secrets, Jenkins Credentials)
-  - Never expose secrets in build logs or error messages
+# Configure Git to detect renames more effectively
+git config --global diff.renamelimit 5000
 
-## Recommended Workflow
+# Make sure autocrlf is set correctly to avoid unnecessary changes
+git config --global core.autocrlf input  # For Unix/Mac
+# git config --global core.autocrlf true  # For Windows
 
-1. **Parameter Setup**:
-   - Run the `setup-ssm-parameters.sh` script locally to create parameters
-   - Never commit the script with actual values filled in
+# Use default branch name for consistency
+git config --global init.defaultBranch main
+```
 
-2. **Template Development**:
-   - Develop CloudFormation templates with parameter references
-   - Use `{{resolve:ssm:parameter-name}}` or `{{resolve:ssm-secure:parameter-name}}` syntax
+## Use Pre-Commit Hooks
 
-3. **Deployment**:
-   - Deploy using AWS CLI, AWS Console, or CI/CD pipeline
-   - Configure IAM roles for deployment to have access to required parameters
+Configure pre-commit hooks to prevent committing sensitive information:
 
-## Security Checks Before Committing
+1. Install pre-commit: `pip install pre-commit`
+2. Create a `.pre-commit-config.yaml` file
+3. Add secret detection hooks
+4. Run `pre-commit install` to set up the hooks
 
-- Run `git diff --staged` before committing to check for accidentally staged secrets
-- Consider using pre-commit hooks or tools like git-secrets to catch secrets
-- Review all changes carefully before pushing to the repository
+## What to Do If Secrets Are Committed
 
-## Additional Security Tools
+If sensitive information is committed to a repository:
 
-- [git-secrets](https://github.com/awslabs/git-secrets): Prevents committing secrets and sensitive information
-- [trufflehog](https://github.com/trufflesecurity/trufflehog): Searches for secrets in git repositories
-- [detect-secrets](https://github.com/Yelp/detect-secrets): An enterprise friendly way of detecting and preventing secrets in code
+### 1. Revoke and Rotate the Secret
 
-Remember: The goal is to maintain version control of infrastructure code while ensuring no sensitive information is exposed in the repository.
+Immediately revoke and rotate any committed secrets. A leaked secret is compromised, even if removed from Git history.
+
+### 2. Remove the Secret from Git History
+
+Use `git filter-repo` to remove the secret from Git history:
+
+```bash
+# Install git-filter-repo
+pip install git-filter-repo
+
+# Remove files containing sensitive data
+git filter-repo --path path/to/sensitive-file --invert-paths
+
+# Replace secrets in specific files
+git filter-repo --replace-text <<EOF
+password123==>REMOVED-SECRET
+api_key_123456==>REMOVED-API-KEY
+EOF
+```
+
+### 3. Force Push the Changes
+
+After cleaning the repository:
+
+```bash
+# Force push to rewrite history on remote (USE WITH CAUTION!)
+git push --force origin main
+```
+
+### 4. Notify Relevant Parties
+
+Inform your security team and other collaborators about the leak and remediation.
+
+## Best Practices for Managing Secrets
+
+1. **Use Environment Variables**
+   - Store secrets in environment variables that are loaded at runtime
+   - Keep these variables out of version control
+
+2. **Use Secret Management Tools**
+   - AWS Secrets Manager
+   - HashiCorp Vault
+   - Azure Key Vault
+   - Google Secret Manager
+
+3. **Reference Secrets in CloudFormation Templates**
+
+   Instead of hardcoding:
+   ```yaml
+   Password: "insecure-password-123"
+   ```
+
+   Use:
+   ```yaml
+   Password: '{{resolve:secretsmanager:mySecretName:SecretString:password}}'
+   ```
+
+4. **Generate Secrets in CloudFormation**
+
+   ```yaml
+   Resources:
+     MySecret:
+       Type: AWS::SecretsManager::Secret
+       Properties:
+         GenerateSecretString:
+           SecretStringTemplate: '{"username": "admin"}'
+           GenerateStringKey: "password"
+           PasswordLength: 16
+   ```
+
+## Using Git Safely in CI/CD Pipelines
+
+1. Store secrets in the CI/CD system's secure storage (e.g., GitHub Secrets)
+2. Use separate deployment credentials with minimal permissions
+3. Avoid checking out the entire Git history in CI/CD pipelines when possible
+4. Implement branch protection rules to prevent force-pushing to main branches
+
+## Additional Security Measures
+
+1. **Implement Branch Protection Rules**
+   - Require pull request reviews
+   - Require status checks to pass before merging
+   - Restrict who can push to matching branches
+
+2. **Regular Security Audits**
+   - Scan repositories for secrets regularly
+   - Audit access permissions
+   - Review webhook configurations
+
+3. **Monitor for Unusual Activity**
+   - Watch for unusual commit patterns
+   - Monitor repository access
+   - Review Git activity logs
+
+## Resources
+
+- [GitGuardian Documentation](https://docs.gitguardian.com/)
+- [GitHub Security Best Practices](https://docs.github.com/en/code-security)
+- [Git Filter-Repo Documentation](https://github.com/newren/git-filter-repo/blob/main/Documentation/git-filter-repo.txt)
+- [AWS Secrets Manager Documentation](https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html)

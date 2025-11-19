@@ -1,0 +1,30 @@
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+    -   id: trailing-whitespace
+    -   id: end-of-file-fixer
+    -   id: check-yaml
+    -   id: check-added-large-files
+
+-   repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+    -   id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+
+-   repo: https://github.com/gitguardian/ggshield
+    rev: v1.16.0
+    hooks:
+    -   id: ggshield
+        language_version: python3
+        stages: [commit]
+
+-   repo: local
+    hooks:
+    -   id: aws-credentials-check
+        name: AWS Credentials Check
+        description: Check for AWS credentials in code
+        entry: sh -c 'git diff --cached --name-only | xargs grep -l "aws_access_key\|aws_secret_key\|AKIA[A-Z0-9]\{16\}" | grep -v .gitignore || true'
+        language: system
+        pass_filenames: false
