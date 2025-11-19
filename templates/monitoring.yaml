@@ -85,6 +85,46 @@ Conditions:
   DeployMonitoring: !Or [!Condition DeployGrafana, !Condition DeployPrometheus]
 
 Resources:
+  # KMS Key for Monitoring
+  MonitoringKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub KMS key for ${ProjectName}-${Environment} monitoring encryption
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'
+          - Sid: Allow AWS services to use the key
+            Effect: Allow
+            Principal:
+              Service: 
+                - sns.amazonaws.com
+                - logs.amazonaws.com
+                - s3.amazonaws.com
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:GenerateDataKey*
+            Resource: '*'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+  
+  # KMS Key Alias
+  MonitoringKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/${ProjectName}-${Environment}-monitoring-key
+      TargetKeyId: !Ref MonitoringKMSKey
+  
   # SNS Topic for Alarms
   AlarmTopic:
     Type: AWS::SNS::Topic
@@ -92,6 +132,7 @@ Resources:
     Properties:
       TopicName: !Sub '${ProjectName}-${Environment}-alarms'
       DisplayName: !Sub '${ProjectName} ${Environment} Alarms'
+      KmsMasterKeyId: !Ref MonitoringKMSKey
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-alarms'
@@ -111,12 +152,16 @@ Resources:
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref MonitoringKMSKey
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+      LoggingConfiguration:
+        DestinationBucketName: !Ref MonitoringLogsBucket
+        LogFilePrefix: bucket-logs/
       LifecycleConfiguration:
         Rules:
           - Id: DeleteOldSnapshots
@@ -125,6 +170,112 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-monitoring'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
+  # S3 Bucket for tracking access logs themselves
+  # Note: This bucket intentionally doesn't have access logging enabled to avoid a circular dependency
+  # Per AWS best practices, the access logs bucket itself doesn't require logging
+  LogTrackingBucket:
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_18
+            comment: "This is the logging destination bucket for other S3 buckets. Adding logging to this bucket would create a circular dependency."
+    Type: AWS::S3::Bucket
+    Condition: DeployMonitoring
+    Properties:
+      BucketName: !Sub '${ProjectName}-${Environment}-log-tracking-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref MonitoringKMSKey
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldLogs
+            Status: Enabled
+            ExpirationInDays: 90
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-log-tracking'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
+  # S3 Bucket for Access Logs
+  MonitoringLogsAccessBucket:
+    Type: AWS::S3::Bucket
+    Condition: DeployMonitoring
+    Properties:
+      BucketName: !Sub '${ProjectName}-${Environment}-monitoring-access-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref MonitoringKMSKey
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LoggingConfiguration:
+        DestinationBucketName: !Ref LogTrackingBucket
+        LogFilePrefix: access-logs-bucket/
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldLogs
+            Status: Enabled
+            ExpirationInDays: 90
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-monitoring-access'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
+  # S3 Bucket for Dashboard Snapshots Log Destination
+  MonitoringLogsBucket:
+    Type: AWS::S3::Bucket
+    Condition: DeployMonitoring
+    Properties:
+      BucketName: !Sub '${ProjectName}-${Environment}-monitoring-logs-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref MonitoringKMSKey
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LoggingConfiguration:
+        DestinationBucketName: !Ref MonitoringLogsAccessBucket
+        LogFilePrefix: log-bucket-logs/
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldLogs
+            Status: Enabled
+            ExpirationInDays: 90
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-monitoring-logs'
         - Key: Environment
           Value: !Ref Environment
         - Key: Project
@@ -150,8 +301,16 @@ Resources:
           SourceSecurityGroupId: !Ref ECSSecurityGroup
           Description: Prometheus access from ECS tasks
       SecurityGroupEgress:
-        - IpProtocol: -1
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
           CidrIp: 0.0.0.0/0
+          Description: HTTPS egress for external API access
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: HTTP egress for external API access
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-monitoring-sg'
@@ -419,6 +578,7 @@ Resources:
     Properties:
       LogGroupName: !Sub '/ecs/${ProjectName}-${Environment}-prometheus'
       RetentionInDays: 30
+      KmsKeyId: !GetAtt MonitoringKMSKey.Arn
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-prometheus-logs'
@@ -434,6 +594,7 @@ Resources:
     Properties:
       LogGroupName: !Sub '/ecs/${ProjectName}-${Environment}-grafana'
       RetentionInDays: 30
+      KmsKeyId: !GetAtt MonitoringKMSKey.Arn
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-grafana-logs'

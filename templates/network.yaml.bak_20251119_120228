@@ -304,10 +304,10 @@ Resources:
         - IpProtocol: tcp
           FromPort: 8080
           ToPort: 8080
-CidrIp: 10.0.0.0/8  # Restrict to private network
+          CidrIp: 0.0.0.0/0
       SecurityGroupEgress:
         - IpProtocol: -1
-CidrIp: 10.0.0.0/8  # Restrict to private network
+          CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-jenkins-sg'

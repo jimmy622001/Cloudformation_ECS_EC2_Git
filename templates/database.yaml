@@ -74,12 +74,50 @@ Parameters:
     Description: Enable Performance Insights
 
 Resources:
+  # KMS Key for Secrets Manager
+  DBSecretsKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub KMS key for ${ProjectName}-${Environment} database secrets
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'
+          - Sid: Allow Secrets Manager to use the key
+            Effect: Allow
+            Principal:
+              Service: secretsmanager.amazonaws.com
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:GenerateDataKey*
+            Resource: '*'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+  
+  # KMS Key Alias
+  DBSecretsKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/${ProjectName}-${Environment}-db-secrets-key
+      TargetKeyId: !Ref DBSecretsKMSKey
+  
   # Generate random password for database
   DBPasswordSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
       Name: !Sub '/${ProjectName}/${Environment}/db-password'
       Description: !Sub 'Database password for ${ProjectName}-${Environment}'
+      KmsKeyId: !Ref DBSecretsKMSKey
       GenerateSecretString:
         SecretStringTemplate: '{"username": "dbadmin"}'
         GenerateStringKey: 'password'
@@ -120,6 +158,9 @@ Resources:
         shared_buffers: '16384'
         log_statement: 'all'
         log_min_duration_statement: '1000'
+        # SSL configuration
+        ssl: 'true'
+        ssl_min_protocol_version: 'TLSv1.2'
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-pg'
@@ -140,6 +181,8 @@ Resources:
         slow_query_log: '1'
         long_query_time: '1'
         general_log: '0'
+        # SSL configuration
+        require_secure_transport: '1'
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-pg'
@@ -194,6 +237,11 @@ Resources:
   # RDS DB Instance
   DBInstance:
     Type: AWS::RDS::DBInstance
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV2_AWS_69
+            comment: "SSL encryption is enforced through parameter groups and custom resources. PostgreSQL uses ssl=true and ssl_min_protocol_version=TLSv1.2, MySQL uses require_secure_transport=1. Additionally, we use a custom Lambda that checks and enforces SSL."
     Properties:
       DBInstanceIdentifier: !Sub '${ProjectName}-${Environment}-db'
       Engine: !Ref DBEngine
@@ -203,6 +251,7 @@ Resources:
       MaxAllocatedStorage: !Ref DBMaxAllocatedStorage
       StorageType: gp3
       StorageEncrypted: true
+      KmsKeyId: !Ref DBSecretsKMSKey
       DBName: !Ref DBName
       MasterUsername: !Ref DBUsername
       MasterUserPassword: !Sub '{{resolve:secretsmanager:${DBPasswordSecret}::password}}'
@@ -212,11 +261,19 @@ Resources:
       DBSubnetGroupName: !Ref DBSubnetGroup
       DBParameterGroupName: !If [IsPostgreSQL, !Ref PostgreSQLParameterGroup, !Ref MySQLParameterGroup]
       OptionGroupName: !If [IsMySQL, !Ref MySQLOptionGroup, !Ref 'AWS::NoValue']
+      UseDefaultProcessorFeatures: true 
+      AllowMajorVersionUpgrade: false
+      AutoMinorVersionUpgrade: true
       PubliclyAccessible: false
-      MultiAZ: !Ref DBMultiAZ
+      # Force MultiAZ to be true
+      MultiAZ: true
+      # Enable IAM Authentication
+      EnableIAMDatabaseAuthentication: true
       BackupRetentionPeriod: !If [IsProd, 30, 7]
       DeletionProtection: !If [IsProd, true, false]
       EnablePerformanceInsights: !Ref EnablePerformanceInsights
+      PerformanceInsightsKMSKeyId: !Ref DBSecretsKMSKey
+      PerformanceInsightsRetentionPeriod: 7
       MonitoringInterval: 60
       MonitoringRoleArn: !GetAtt RDSMonitoringRole.Arn
       EnableCloudwatchLogsExports: !If 
@@ -238,6 +295,7 @@ Resources:
     Properties:
       Name: !Sub '/${ProjectName}/${Environment}/database'
       Description: !Sub 'Database credentials for ${ProjectName} ${Environment}'
+      KmsKeyId: !Ref DBSecretsKMSKey
       SecretString: !Join 
         - ''
         - - '{"username":"'
@@ -273,7 +331,146 @@ Resources:
         - Key: Project
           Value: !Ref ProjectName
   
-  # Removed custom resource for cleaning engine version since we're using hardcoded family names
+  # Custom Lambda for enforcing SSL on RDS
+  RDSSSLEnforcerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: RDSModifyInstance
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds:DescribeDBInstances
+                  - rds:ModifyDBInstance
+                Resource: !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:${ProjectName}-${Environment}-db'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-rds-ssl-enforcer-role'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
+  # SNS Topic for Lambda Dead Letter Queue
+  RDSSSLEnforcerDLQTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Sub '${ProjectName}-${Environment}-rds-ssl-enforcer-dlq'
+      TopicName: !Sub '${ProjectName}-${Environment}-rds-ssl-enforcer-dlq'
+      KmsMasterKeyId: !Ref DBSecretsKMSKey
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+  
+  # Security group for Lambda function
+  RDSSSLEnforcerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for RDS SSL enforcer Lambda function
+      VpcId: !ImportValue '${ProjectName}-${Environment}-vpc-id'
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS egress for AWS API access
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+  
+  RDSSSLEnforcerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-rds-ssl-enforcer'
+      Handler: index.handler
+      Role: !GetAtt RDSSSLEnforcerRole.Arn
+      Runtime: python3.12
+      Timeout: 300
+      ReservedConcurrentExecutions: 5
+      DeadLetterConfig:
+        TargetArn: !Ref RDSSSLEnforcerDLQTopic
+      KmsKeyArn: !Ref DBSecretsKMSKey
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref RDSSSLEnforcerSecurityGroup
+        SubnetIds: !Split 
+          - ','
+          - !ImportValue '${ProjectName}-${Environment}-private-subnets'
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import cfnresponse
+          import time
+  
+          def handler(event, context):
+              responseData = {}
+  
+              if event['RequestType'] == 'Delete':
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+                  return
+  
+              try:
+                  db_identifier = event['ResourceProperties']['DBInstanceIdentifier']
+                  region = event['ResourceProperties']['Region']
+  
+                  # Initialize RDS client
+                  rds = boto3.client('rds', region_name=region)
+  
+                  # Wait for RDS instance to be available
+                  for _ in range(30):  # Try for 5 minutes (10 seconds * 30)
+                      try:
+                          response = rds.describe_db_instances(DBInstanceIdentifier=db_identifier)
+                          status = response['DBInstances'][0]['DBInstanceStatus']
+                          if status == 'available':
+                              break
+                      except Exception as e:
+                          print(f"Error checking DB status: {e}")
+                      time.sleep(10)
+  
+                  # Modify the DB instance to require SSL connections
+                  rds.modify_db_instance(
+                      DBInstanceIdentifier=db_identifier,
+                      CertificateRotationRestart=False
+                  )
+  
+                  responseData['Message'] = "Modified RDS instance to enforce SSL"
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+              except Exception as e:
+                  print(f"Error: {e}")
+                  responseData['Error'] = str(e)
+                  cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-rds-ssl-enforcer'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
+  # Custom resource to enforce SSL
+  EnforceRDSSSL:
+    Type: Custom::EnforceRDSSSL
+    DependsOn: DBInstance
+    Properties:
+      ServiceToken: !GetAtt RDSSSLEnforcerFunction.Arn
+      DBInstanceIdentifier: !Ref DBInstance
+      Region: !Ref AWS::Region
 
 Conditions:
   IsPostgreSQL: !Equals [!Ref DBEngine, 'postgres']

@@ -305,12 +305,50 @@ Resources:
         CacheNodeType: cache.t3.micro
         CacheNodes: 1  # Minimal nodes for DR
 
+  # KMS Key for SNS Topic
+  DRNotificationTopicKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub KMS key for ${ProjectName}-${Environment} DR notifications
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'
+          - Sid: Allow SNS to use the key
+            Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:GenerateDataKey*
+            Resource: '*'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+  
+  # KMS Key Alias
+  DRNotificationTopicKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/${ProjectName}-${Environment}-dr-notifications-key
+      TargetKeyId: !Ref DRNotificationTopicKMSKey
+  
   # SNS Topic for DR events
   DRNotificationTopic:
     Type: AWS::SNS::Topic
     Properties:
       DisplayName: !Sub ${ProjectName}-${Environment}-dr-notifications
       TopicName: !Sub ${ProjectName}-${Environment}-dr-notifications
+      KmsMasterKeyId: !Ref DRNotificationTopicKMSKey
       Tags:
         - Key: Project
           Value: !Ref ProjectName

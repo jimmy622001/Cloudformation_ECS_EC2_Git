@@ -98,29 +98,122 @@ Resources:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: arn:aws:logs:*:*:*
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ProjectName}-${Environment}-*"
+              - Effect: Allow
+                Action:
+                  - ecs:DescribeServices
+                Resource: !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:service/*"
               - Effect: Allow
                 Action:
                   - ecs:UpdateService
-                  - ecs:DescribeServices
-                  - autoscaling:UpdateAutoScalingGroup
+                Resource: !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:service/${ECSClusterName}/${ECSServiceName}"
+              - Effect: Allow
+                Action:
                   - autoscaling:DescribeAutoScalingGroups
+                Resource: !Sub "arn:aws:autoscaling:${AWS::Region}:${AWS::AccountId}:autoScalingGroup:*:autoScalingGroupName/*"
+              - Effect: Allow
+                Action:
+                  - autoscaling:UpdateAutoScalingGroup
+                Resource: !Sub "arn:aws:autoscaling:${AWS::Region}:${AWS::AccountId}:autoScalingGroup:*:autoScalingGroupName/${ASGName}"
+              - Effect: Allow
+                Action:
                   - ec2:DescribeInstances
-                  - ec2:ModifyInstanceAttribute
-                  - ec2:RunInstances
                   - ec2:DescribeInstanceStatus
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ec2:ModifyInstanceAttribute
                   - ec2:CreateTags
+                Resource: !Sub "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+              - Effect: Allow
+                Action:
+                  - ec2:RunInstances
+                Resource:
+                  - !Sub "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+                  - !Sub "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:subnet/*"
+                  - !Sub "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/*"
+                  - !Sub "arn:aws:ec2:${AWS::Region}::image/*"
+              - Effect: Allow
+                Action:
                   - events:PutRule
                   - events:PutTargets
+                Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/dr-test-*"
+              - Effect: Allow
+                Action:
                   - lambda:GetFunction
+                Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-${Environment}-dr-test-cleanup"
+              - Effect: Allow
+                Action:
                   - lambda:AddPermission
-                Resource: '*'
+                Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-${Environment}-dr-test-cleanup"
       Tags:
         - Key: Project
           Value: !Ref ProjectName
         - Key: Environment
           Value: !Ref Environment
 
+  # SNS Topic for Dead Letter Queue
+  DRLambdaDeadLetterTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Sub ${ProjectName}-${Environment}-dr-lambda-dlq
+      TopicName: !Sub ${ProjectName}-${Environment}-dr-lambda-dlq
+      KmsMasterKeyId: !Ref DRLambdaKmsKey
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+  
+  # KMS Key for encryption
+  DRLambdaKmsKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub KMS key for DR Lambda encryption ${ProjectName}-${Environment}
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action:
+              - kms:Create*
+              - kms:Describe*
+              - kms:Enable*
+              - kms:List*
+              - kms:Put*
+              - kms:Update*
+              - kms:Revoke*
+              - kms:Disable*
+              - kms:Get*
+              - kms:Delete*
+              - kms:ScheduleKeyDeletion
+              - kms:CancelKeyDeletion
+            Resource: '*'
+          - Sid: Allow Lambda to use the key
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:GenerateDataKey*
+            Resource: '*'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+  
+  # KMS Key Alias
+  DRLambdaKmsKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/${ProjectName}-${Environment}-dr-lambda-key
+      TargetKeyId: !Ref DRLambdaKmsKey
+  
   DRLambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -130,6 +223,16 @@ Resources:
       Runtime: nodejs22.x
       Timeout: 300
       MemorySize: 256
+      ReservedConcurrentExecutions: 5
+      DeadLetterConfig:
+        TargetArn: !Ref DRLambdaDeadLetterTopic
+      KmsKeyArn: !GetAtt DRLambdaKmsKey.Arn
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref DRLambdaSecurityGroup
+        SubnetIds: !Split
+          - ','
+          - Fn::ImportValue: !Sub ${ProjectName}-${Environment}-private-subnets
       Environment:
         Variables:
           PRIMARY_REGION: !Ref PrimaryRegion
@@ -255,6 +358,25 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  # Security group for Lambda functions in VPC
+  DRLambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for DR Lambda functions
+      VpcId: 
+        Fn::ImportValue: !Sub ${ProjectName}-${Environment}-vpc-id
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS egress for AWS API access
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+  
   DRTestCleanupFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -264,6 +386,16 @@ Resources:
       Runtime: nodejs22.x
       Timeout: 300
       MemorySize: 256
+      ReservedConcurrentExecutions: 5
+      DeadLetterConfig:
+        TargetArn: !Ref DRLambdaDeadLetterTopic
+      KmsKeyArn: !GetAtt DRLambdaKmsKey.Arn
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref DRLambdaSecurityGroup
+        SubnetIds: !Split
+          - ','
+          - !ImportValue '${ProjectName}-${Environment}-private-subnets'
       Environment:
         Variables:
           DR_REGION: !Ref DRRegion

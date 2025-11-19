@@ -2,9 +2,10 @@ name: SonarCloud Analysis
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, dev]
   pull_request:
-    branches: [main, master]
+    branches: [main, dev]
+  workflow_dispatch:
   schedule:
     - cron: '0 8 * * 1' # Run weekly on Mondays
 
@@ -16,15 +17,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # Shallow clones should be disabled for better relevancy of analysis
 
       - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master
+        # Updated to use the recommended version
+        uses: SonarSource/sonarqube-scan-action@v5.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Auto-created by GitHub
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}    # Need to be added in GitHub secrets
         with:
           args: >
-            -Dsonar.projectKey=your-organization_your-project
-            -Dsonar.organization=your-organization
-            # Add more configuration parameters as needed
+            -Dsonar.projectKey=example_cloudformation-poc
+            -Dsonar.organization=example
+            -Dsonar.sources=.
+            -Dsonar.exclusions=**/*.bat,**/*.sh
+            -Dsonar.cfn.file.suffixes=.yaml,.yml,templates/**/*.yaml,templates/**/*.yml
+            -Dsonar.cfn.nag.reportFiles=cfn-lint-results.sarif
+            -Dsonar.branch.name=${{ github.ref_name }}

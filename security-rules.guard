@@ -1,0 +1,51 @@
+# Basic Security Rules 
+          
+# Enforce encryption of S3 buckets
+rule s3_encryption when resourceType == "AWS::S3::Bucket" {
+  some Properties.BucketEncryption.ServerSideEncryptionConfiguration[*].ServerSideEncryptionByDefault.SSEAlgorithm == "AES256" or
+  some Properties.BucketEncryption.ServerSideEncryptionConfiguration[*].ServerSideEncryptionByDefault.SSEAlgorithm == "aws:kms"
+}
+          
+# Ensure S3 buckets block public access
+rule s3_public_access_block when resourceType == "AWS::S3::Bucket" {
+  Properties.PublicAccessBlockConfiguration.BlockPublicAcls == true
+  Properties.PublicAccessBlockConfiguration.BlockPublicPolicy == true
+  Properties.PublicAccessBlockConfiguration.IgnorePublicAcls == true
+  Properties.PublicAccessBlockConfiguration.RestrictPublicBuckets == true
+}
+          
+# Ensure RDS instances are encrypted
+rule rds_encryption when resourceType == "AWS::RDS::DBInstance" {
+  Properties.StorageEncrypted == true
+}
+          
+# Ensure security groups don't allow unrestricted access
+rule restrict_sg_ingress when resourceType == "AWS::EC2::SecurityGroup" {
+  when some Properties.SecurityGroupIngress[*] {
+    not (CidrIp == "0.0.0.0/0" and (FromPort == 0 or ToPort == 0 or IpProtocol == "-1"))
+  }
+}
+
+# Ensure IAM roles don't have wild card permissions
+rule iam_no_wildcards when resourceType == "AWS::IAM::Role" {
+  when some Properties.Policies[*] {
+    when some Properties.Policies[*].PolicyDocument.Statement[*] {
+      when Properties.Policies[*].PolicyDocument.Statement[*].Effect == "Allow" {
+        Properties.Policies[*].PolicyDocument.Statement[*].Resource != "*"
+      }
+    }
+  }
+}
+
+# Ensure Lambda functions have environment variables encrypted
+rule lambda_env_encryption when resourceType == "AWS::Lambda::Function" {
+  when Properties.Environment exists {
+    Properties.KmsKeyArn exists
+  }
+}
+
+# Ensure Lambda functions have dead letter queues
+rule lambda_dlq when resourceType == "AWS::Lambda::Function" {
+  Properties.DeadLetterConfig exists
+  Properties.DeadLetterConfig.TargetArn exists
+}
