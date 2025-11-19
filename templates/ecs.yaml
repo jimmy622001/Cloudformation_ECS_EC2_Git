@@ -109,12 +109,19 @@ Parameters:
     Type: String
     Default: ''
     Description: ARN of existing ACM certificate
+  
+  ECSOptimizedAMI:
+    Type: String
+    Default: 'ami-05f547fc86666ec26'  # ECS-optimized Amazon Linux 2 in us-east-1
+    AllowedPattern: '^ami-[a-z0-9]{17}|^$'
+    Description: ECS-optimized Amazon Linux 2 AMI ID
 
 Conditions:
   HasKeyPair: !Not [!Equals [!Ref KeyPairName, '']]
   ShouldCreateDummyCert: !Equals [!Ref CreateDummyCert, 'true']
   HasCustomCert: !Not [!Equals [!Ref ACMCertificateARN, '']]
   NeedsNewCertificate: !And [!Equals [!Ref CreateDummyCert, 'true'], !Equals [!Ref ACMCertificateARN, '']]
+  IsProd: !Equals [!Ref Environment, 'prod']
 
 Resources:
   # ECS Cluster
@@ -158,10 +165,7 @@ Resources:
         - CapacityProvider: !Ref CapacityProvider
           Weight: 1
 
-  # Latest Amazon Linux 2 ECS-optimized AMI using SSM Parameter
-  ECSOptimizedAMI:
-    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/ecs/optimized-ami/amazon-linux-2/recommended/image_id
+  # Launch Template for EC2 instances
 
   # Launch Template for EC2 instances
   ECSLaunchTemplate:
@@ -249,7 +253,7 @@ Resources:
         - Key: idle_timeout.timeout_seconds
           Value: '60'
         - Key: deletion_protection.enabled
-          Value: !If [!Equals [!Ref Environment, 'prod'], 'true', 'false']
+          Value: !If [IsProd, 'true', 'false']
       SecurityGroups:
         - !Ref ALBSecurityGroup
       Subnets: !Split [',', !Ref PublicSubnets]

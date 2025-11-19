@@ -71,15 +71,18 @@ Parameters:
     Type: String
     Default: green-tg
     Description: Name of the green target group
+  
+  JenkinsAMI:
+    Type: String
+    Default: 'ami-0533def961e8503da'  # Amazon Linux 2 AMI in us-east-1
+    AllowedPattern: '^ami-[a-z0-9]{17}|^$'
+    Description: Amazon Linux 2 AMI ID
 
 Conditions:
   HasKeyPair: !Not [!Equals [!Ref KeyPairName, '']]
 
 Resources:
-  # Latest Amazon Linux 2 AMI using SSM Parameter
-  JenkinsAMI:
-    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+  # Jenkins EC2 Instance
 
   # Jenkins EC2 Instance
   JenkinsInstance:

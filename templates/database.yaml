@@ -116,7 +116,7 @@ Resources:
     Condition: IsPostgreSQL
     Properties:
       Description: !Sub 'Parameter group for ${ProjectName}-${Environment} PostgreSQL'
-      Family: !Sub 'postgres${DBEngineVersionClean}'
+      Family: !Sub 'postgres${CleanVersionCustomResource.CleanVersion}'
       Parameters:
         max_connections: '100'
         shared_buffers: '16384'
@@ -136,7 +136,7 @@ Resources:
     Condition: IsMySQL
     Properties:
       Description: !Sub 'Parameter group for ${ProjectName}-${Environment} MySQL'
-      Family: !Sub 'mysql${DBEngineVersionClean}'
+      Family: !Sub 'mysql${CleanVersionCustomResource.CleanVersion}'
       Parameters:
         max_connections: '100'
         slow_query_log: '1'
@@ -217,8 +217,8 @@ Resources:
       PubliclyAccessible: false
       MultiAZ: !Ref DBMultiAZ
       BackupRetentionPeriod: !If [IsProd, 30, 7]
-      BackupWindow: '03:00-04:00'
-      MaintenanceWindow: 'sun:04:30-sun:05:30'
+      PreferredBackupWindow: '03:00-04:00'
+      PreferredMaintenanceWindow: 'sun:04:30-sun:05:30'
       DeletionProtection: !If [IsProd, true, false]
       EnablePerformanceInsights: !Ref EnablePerformanceInsights
       MonitoringInterval: 60
@@ -250,10 +250,10 @@ Resources:
         - Key: Project
           Value: !Ref ProjectName
 
-  DBCredentialsSecretVersion:
-    Type: AWS::SecretsManager::SecretVersionAttachment
+  DBCredentialsSecretUpdate:
+    Type: AWS::SecretsManager::Secret
     Properties:
-      SecretId: !Ref DBCredentialsSecret
+      Name: !Sub '/${ProjectName}/${Environment}/database-updated'
       SecretString: !Join 
         - ''
         - - '{"username":"'

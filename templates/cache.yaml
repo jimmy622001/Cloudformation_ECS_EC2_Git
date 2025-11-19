@@ -107,10 +107,11 @@ Resources:
         - Key: Project
           Value: !Ref ProjectName
 
-  CacheCredentialsSecretVersion:
-    Type: AWS::SecretsManager::SecretVersionAttachment
+  # Updating the secret directly since SecretVersionAttachment is not supported
+  CacheCredentialsSecretUpdate:
+    Type: AWS::SecretsManager::Secret
     Properties:
-      SecretId: !Ref CacheCredentialsSecret
+      Name: !Sub '/${ProjectName}/${Environment}/cache-updated'
       SecretString: !Sub |
         {
           "host": "${CacheReplicationGroup.PrimaryEndPoint.Address}",
