@@ -1,0 +1,86 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "ecs-jenkins-github"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "prod"
+  },
+  {
+    "ParameterKey": "AWSRegion",
+    "ParameterValue": "eu-west-2"
+  },
+  {
+    "ParameterKey": "VPCCidr",
+    "ParameterValue": "10.1.0.0/16"
+  },
+  {
+    "ParameterKey": "PublicSubnetCidrs",
+    "ParameterValue": "10.1.1.0/24,10.1.2.0/24,10.1.3.0/24"
+  },
+  {
+    "ParameterKey": "PrivateSubnetCidrs",
+    "ParameterValue": "10.1.11.0/24,10.1.12.0/24,10.1.13.0/24"
+  },
+  {
+    "ParameterKey": "DatabaseSubnetCidrs",
+    "ParameterValue": "10.1.21.0/24,10.1.22.0/24,10.1.23.0/24"
+  },
+  {
+    "ParameterKey": "CacheSubnetCidrs",
+    "ParameterValue": "10.1.31.0/24,10.1.32.0/24,10.1.33.0/24"
+  },
+  {
+    "ParameterKey": "DBInstanceClass",
+    "ParameterValue": "db.t3.large"
+  },
+  {
+    "ParameterKey": "DBMultiAZ",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "DBAllocatedStorage",
+    "ParameterValue": "100"
+  },
+  {
+    "ParameterKey": "InstanceType",
+    "ParameterValue": "t3.medium"
+  },
+  {
+    "ParameterKey": "MinCapacity",
+    "ParameterValue": "4"
+  },
+  {
+    "ParameterKey": "MaxCapacity",
+    "ParameterValue": "8"
+  },
+  {
+    "ParameterKey": "DesiredTaskCount",
+    "ParameterValue": "4"
+  },
+  {
+    "ParameterKey": "JenkinsInstanceType",
+    "ParameterValue": "t3.medium"
+  },
+  {
+    "ParameterKey": "CacheNodeType",
+    "ParameterValue": "cache.t3.small"
+  },
+  {
+    "ParameterKey": "CacheNodes",
+    "ParameterValue": "3"
+  },
+  {
+    "ParameterKey": "EnableGuardDuty",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "EnableSecurityHub",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "DomainName",
+    "ParameterValue": "prod.example.com"
+  }
+]

@@ -1,0 +1,159 @@
+name: CloudFormation Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+      confirm_deploy:
+        description: 'Type "DEPLOY" to confirm deployment'
+        required: true
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'templates/**'
+      - '*.json'
+
+jobs:
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      security-events: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install cfn-lint checkov
+      
+      - name: Run cfn-lint with SARIF output
+        run: |
+          cfn-lint templates/*.yaml -i W --format sarif > cfn-lint-results.sarif
+      
+      - name: Upload cfn-lint SARIF results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: cfn-lint-results.sarif
+          category: cfn-lint
+      
+      - name: Run Checkov with SARIF output
+        run: |
+          checkov -d templates/ --framework cloudformation --output sarif > checkov-results.sarif
+      
+      - name: Upload Checkov SARIF results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: checkov-results.sarif
+          category: checkov
+  
+  deploy:
+    name: Deploy CloudFormation Stack
+    runs-on: ubuntu-latest
+    needs: security-scan
+    permissions:
+      contents: read
+      id-token: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: eu-west-2
+      
+      - name: Determine environment
+        id: env
+        run: |
+          # For workflow_dispatch, use the input value
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "ENV=${{ github.event.inputs.environment }}" >> $GITHUB_ENV
+            echo "PARAM_FILE=${{ github.event.inputs.environment }}-parameters.json" >> $GITHUB_ENV
+            
+            # Validate confirmation for production
+            if [[ "${{ github.event.inputs.environment }}" == "prod" && "${{ github.event.inputs.confirm_deploy }}" != "DEPLOY" ]]; then
+              echo "ERROR: Production deployment requires confirmation. Please type DEPLOY to confirm."
+              exit 1
+            fi
+          else
+            # For push events, use the branch
+            if [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/master" ]]; then
+              echo "ENV=prod" >> $GITHUB_ENV
+              echo "PARAM_FILE=prod-parameters.json" >> $GITHUB_ENV
+            else
+              echo "ENV=dev" >> $GITHUB_ENV
+              echo "PARAM_FILE=dev-parameters.json" >> $GITHUB_ENV
+            fi
+          fi
+      
+      - name: Package CloudFormation Templates
+        run: |
+          # Create S3 bucket for templates if it doesn't exist
+          TEMPLATE_BUCKET=cfn-templates-${{ github.repository_owner }}-${{ env.ENV }}-${{ github.run_id }}
+          aws s3 mb s3://$TEMPLATE_BUCKET --region eu-west-2 || true
+          
+          # Package the template
+          aws cloudformation package \
+            --template-file templates/master.yaml \
+            --s3-bucket $TEMPLATE_BUCKET \
+            --s3-prefix templates \
+            --output-template-file packaged-template.yaml
+      
+      - name: Deploy CloudFormation Stack
+        run: |
+          STACK_NAME=ecs-jenkins-github-${{ env.ENV }}
+          
+          # Check if stack exists
+          if aws cloudformation describe-stacks --stack-name $STACK_NAME 2>&1 | grep -q "Stack with id $STACK_NAME does not exist"; then
+            # Create new stack
+            aws cloudformation deploy \
+              --template-file packaged-template.yaml \
+              --stack-name $STACK_NAME \
+              --parameter-overrides file://${{ env.PARAM_FILE }} \
+              --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
+              --no-fail-on-empty-changeset
+          else
+            # Update existing stack
+            aws cloudformation deploy \
+              --template-file packaged-template.yaml \
+              --stack-name $STACK_NAME \
+              --parameter-overrides file://${{ env.PARAM_FILE }} \
+              --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
+              --no-fail-on-empty-changeset
+          fi
+      
+      - name: Get CloudFormation Outputs
+        if: success()
+        run: |
+          STACK_NAME=ecs-jenkins-github-${{ env.ENV }}
+          aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs" --output json > stack-outputs.json
+          cat stack-outputs.json
+      
+      - name: Upload Stack Outputs
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: stack-outputs
+          path: stack-outputs.json

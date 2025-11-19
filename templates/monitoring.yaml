@@ -1,0 +1,623 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Monitoring resources for ECS-EC2-Jenkins-Git infrastructure'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project name used for resource tagging
+  
+  Environment:
+    Type: String
+    Description: Deployment environment
+  
+  VpcId:
+    Type: String
+    Description: VPC ID
+  
+  PrivateSubnets:
+    Type: String
+    Description: Comma-separated list of private subnet IDs
+  
+  PublicSubnets:
+    Type: String
+    Description: Comma-separated list of public subnet IDs
+  
+  ECSSecurityGroup:
+    Type: String
+    Description: ECS security group ID
+  
+  ECSClusterArn:
+    Type: String
+    Description: ARN of ECS cluster
+  
+  ECSClusterName:
+    Type: String
+    Description: Name of ECS cluster
+  
+  ECSServiceName:
+    Type: String
+    Description: Name of ECS service
+  
+  ALBName:
+    Type: String
+    Description: Name of the ALB
+  
+  DBInstanceId:
+    Type: String
+    Description: Database instance ID
+  
+  ECSTaskExecutionRole:
+    Type: String
+    Description: ARN of ECS task execution role
+  
+  ECSTaskRole:
+    Type: String
+    Description: ARN of ECS task role
+  
+  CreateGrafanaDashboard:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Create Grafana dashboard
+  
+  CreatePrometheus:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Create Prometheus instance
+  
+  AlertingEnabled:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Enable CloudWatch alarms with SNS notifications
+  
+  GrafanaPassword:
+    Type: String
+    Default: changeme
+    NoEcho: true
+    Description: Password for Grafana admin user
+
+Conditions:
+  DeployGrafana: !Equals [!Ref CreateGrafanaDashboard, 'true']
+  DeployPrometheus: !Equals [!Ref CreatePrometheus, 'true']
+  EnableAlerting: !Equals [!Ref AlertingEnabled, 'true']
+  DeployMonitoring: !Or [!Condition DeployGrafana, !Condition DeployPrometheus]
+
+Resources:
+  # SNS Topic for Alarms
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Condition: EnableAlerting
+    Properties:
+      TopicName: !Sub '${ProjectName}-${Environment}-alarms'
+      DisplayName: !Sub '${ProjectName} ${Environment} Alarms'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-alarms'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # S3 Bucket for Dashboard Snapshots
+  MonitoringBucket:
+    Type: AWS::S3::Bucket
+    Condition: DeployMonitoring
+    Properties:
+      BucketName: !Sub '${ProjectName}-${Environment}-monitoring-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldSnapshots
+            Status: Enabled
+            ExpirationInDays: 30
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-monitoring'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Security Group for Monitoring Tools
+  MonitoringSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: DeployMonitoring
+    Properties:
+      GroupName: !Sub '${ProjectName}-${Environment}-monitoring-sg'
+      GroupDescription: Security group for monitoring tools
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+          Description: Grafana web access
+        - IpProtocol: tcp
+          FromPort: 9090
+          ToPort: 9090
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+          Description: Prometheus access from ECS tasks
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-monitoring-sg'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # CloudWatch Dashboard for Application
+  ApplicationDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${ProjectName}-${Environment}-dashboard'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "text",
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 1,
+              "properties": {
+                "markdown": "# ${ProjectName} ${Environment} Dashboard"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 1,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/ECS", "CPUUtilization", "ClusterName", "${ECSClusterName}", "ServiceName", "${ECSServiceName}" ]
+                ],
+                "period": 60,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "ECS Service CPU Utilization"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 1,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/ECS", "MemoryUtilization", "ClusterName", "${ECSClusterName}", "ServiceName", "${ECSServiceName}" ]
+                ],
+                "period": 60,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "ECS Service Memory Utilization"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 7,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/ApplicationELB", "RequestCount", "LoadBalancer", "${ALBName}" ]
+                ],
+                "period": 60,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "ALB Request Count"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 7,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", "${ALBName}" ]
+                ],
+                "period": 60,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "ALB Response Time"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 13,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", "${DBInstanceId}" ]
+                ],
+                "period": 60,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "RDS CPU Utilization"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 13,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/RDS", "DatabaseConnections", "DBInstanceIdentifier", "${DBInstanceId}" ]
+                ],
+                "period": 60,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "RDS Database Connections"
+              }
+            }
+          ]
+        }
+
+  # Task Definition for Prometheus (if enabled)
+  PrometheusTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Condition: DeployPrometheus
+    Properties:
+      Family: !Sub '${ProjectName}-${Environment}-prometheus'
+      NetworkMode: bridge
+      RequiresCompatibilities:
+        - EC2
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      TaskRoleArn: !Ref ECSTaskRole
+      ContainerDefinitions:
+        - Name: prometheus
+          Image: prom/prometheus:latest
+          Essential: true
+          PortMappings:
+            - ContainerPort: 9090
+              HostPort: 0  # Dynamic port mapping
+              Protocol: tcp
+          MountPoints:
+            - SourceVolume: prometheus-config
+              ContainerPath: /etc/prometheus
+              ReadOnly: false
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref PrometheusLogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: prometheus
+          Memory: 512
+          Cpu: 256
+      Volumes:
+        - Name: prometheus-config
+          DockerVolumeConfiguration:
+            Scope: shared
+            Autoprovision: true
+            Driver: local
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-prometheus-task'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Task Definition for Grafana (if enabled)
+  GrafanaTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Condition: DeployGrafana
+    Properties:
+      Family: !Sub '${ProjectName}-${Environment}-grafana'
+      NetworkMode: bridge
+      RequiresCompatibilities:
+        - EC2
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      TaskRoleArn: !Ref ECSTaskRole
+      ContainerDefinitions:
+        - Name: grafana
+          Image: grafana/grafana:latest
+          Essential: true
+          PortMappings:
+            - ContainerPort: 3000
+              HostPort: 0  # Dynamic port mapping
+              Protocol: tcp
+          Environment:
+            - Name: GF_SECURITY_ADMIN_PASSWORD
+              Value: !Ref GrafanaPassword
+            - Name: GF_SECURITY_ADMIN_USER
+              Value: admin
+            - Name: GF_AUTH_ANONYMOUS_ENABLED
+              Value: "false"
+            - Name: GF_USERS_ALLOW_SIGN_UP
+              Value: "false"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref GrafanaLogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: grafana
+          Memory: 512
+          Cpu: 256
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-grafana-task'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ECS Service for Prometheus
+  PrometheusService:
+    Type: AWS::ECS::Service
+    Condition: DeployPrometheus
+    Properties:
+      ServiceName: !Sub '${ProjectName}-${Environment}-prometheus-service'
+      Cluster: !Ref ECSClusterArn
+      TaskDefinition: !Ref PrometheusTaskDefinition
+      DesiredCount: 1
+      LaunchType: EC2
+      PlacementStrategies:
+        - Type: spread
+          Field: attribute:ecs.availability-zone
+        - Type: binpack
+          Field: memory
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-prometheus-service'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ECS Service for Grafana
+  GrafanaService:
+    Type: AWS::ECS::Service
+    Condition: DeployGrafana
+    Properties:
+      ServiceName: !Sub '${ProjectName}-${Environment}-grafana-service'
+      Cluster: !Ref ECSClusterArn
+      TaskDefinition: !Ref GrafanaTaskDefinition
+      DesiredCount: 1
+      LaunchType: EC2
+      PlacementStrategies:
+        - Type: spread
+          Field: attribute:ecs.availability-zone
+        - Type: binpack
+          Field: memory
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-grafana-service'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # CloudWatch Log Group for Prometheus
+  PrometheusLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: DeployPrometheus
+    Properties:
+      LogGroupName: !Sub '/ecs/${ProjectName}-${Environment}-prometheus'
+      RetentionInDays: 30
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-prometheus-logs'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # CloudWatch Log Group for Grafana
+  GrafanaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: DeployGrafana
+    Properties:
+      LogGroupName: !Sub '/ecs/${ProjectName}-${Environment}-grafana'
+      RetentionInDays: 30
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-grafana-logs'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # CloudWatch Alarms for RDS
+  DBCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: EnableAlerting
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-db-cpu-high'
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 2
+      MetricName: CPUUtilization
+      Namespace: AWS/RDS
+      Period: 60
+      Statistic: Average
+      Threshold: 85
+      AlarmDescription: Database CPU utilization is high
+      Dimensions:
+        - Name: DBInstanceIdentifier
+          Value: !Ref DBInstanceId
+      AlarmActions:
+        - !Ref AlarmTopic
+      OKActions:
+        - !Ref AlarmTopic
+      TreatMissingData: notBreaching
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-db-cpu-alarm'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  DBConnectionsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: EnableAlerting
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-db-connections-high'
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 2
+      MetricName: DatabaseConnections
+      Namespace: AWS/RDS
+      Period: 60
+      Statistic: Average
+      Threshold: 100  # Adjust based on your database specifics
+      AlarmDescription: Database connection count is high
+      Dimensions:
+        - Name: DBInstanceIdentifier
+          Value: !Ref DBInstanceId
+      AlarmActions:
+        - !Ref AlarmTopic
+      OKActions:
+        - !Ref AlarmTopic
+      TreatMissingData: notBreaching
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-db-connections-alarm'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # CloudWatch Alarms for ALB
+  ALBHighLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: EnableAlerting
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-alb-latency-high'
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 3
+      MetricName: TargetResponseTime
+      Namespace: AWS/ApplicationELB
+      Period: 60
+      Statistic: Average
+      Threshold: 1  # 1 second response time threshold
+      AlarmDescription: ALB target response time is high
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !Ref ALBName
+      AlarmActions:
+        - !Ref AlarmTopic
+      OKActions:
+        - !Ref AlarmTopic
+      TreatMissingData: notBreaching
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-alb-latency-alarm'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # CloudWatch Alarms for ECS
+  ECSCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: EnableAlerting
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-ecs-cpu-high'
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 2
+      MetricName: CPUUtilization
+      Namespace: AWS/ECS
+      Period: 60
+      Statistic: Average
+      Threshold: 80
+      AlarmDescription: ECS service CPU utilization is high
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ECSClusterName
+        - Name: ServiceName
+          Value: !Ref ECSServiceName
+      AlarmActions:
+        - !Ref AlarmTopic
+      OKActions:
+        - !Ref AlarmTopic
+      TreatMissingData: notBreaching
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-ecs-cpu-alarm'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  ECSMemoryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: EnableAlerting
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-ecs-memory-high'
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 2
+      MetricName: MemoryUtilization
+      Namespace: AWS/ECS
+      Period: 60
+      Statistic: Average
+      Threshold: 80
+      AlarmDescription: ECS service memory utilization is high
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ECSClusterName
+        - Name: ServiceName
+          Value: !Ref ECSServiceName
+      AlarmActions:
+        - !Ref AlarmTopic
+      OKActions:
+        - !Ref AlarmTopic
+      TreatMissingData: notBreaching
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-ecs-memory-alarm'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+  DashboardURL:
+    Description: URL for CloudWatch Dashboard
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${ProjectName}-${Environment}-dashboard'
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-dashboard-url'
+
+  GrafanaServiceName:
+    Description: ECS service name for Grafana
+    Condition: DeployGrafana
+    Value: !Ref GrafanaService
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-grafana-service'
+
+  PrometheusServiceName:
+    Description: ECS service name for Prometheus
+    Condition: DeployPrometheus
+    Value: !Ref PrometheusService
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-prometheus-service'
+
+  AlarmTopicARN:
+    Description: ARN of SNS topic for alarms
+    Condition: EnableAlerting
+    Value: !Ref AlarmTopic
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-alarm-topic-arn'

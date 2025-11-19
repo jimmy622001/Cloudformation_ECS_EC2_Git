@@ -1,0 +1,242 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'IAM resources for ECS-EC2-Jenkins-Git infrastructure'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project name used for resource tagging
+  
+  Environment:
+    Type: String
+    Description: Deployment environment
+
+Resources:
+  # ECS Task Execution Role
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-task-execution-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-task-execution-role'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Additional policy for task execution role to access secrets
+  ECSSecretsPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-${Environment}-ecs-secrets-policy'
+      Roles:
+        - !Ref ECSTaskExecutionRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+              - kms:Decrypt
+            Resource: '*'
+
+  # ECS Task Role
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-task-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-task-role'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Task Role Policy for CloudWatch
+  CloudWatchPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-${Environment}-ecs-cloudwatch-policy'
+      Roles:
+        - !Ref ECSTaskRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - cloudwatch:PutMetricData
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: '*'
+
+  # EC2 Instance Role for ECS
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-ec2-instance-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-ec2-instance-role'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Instance Profile for ECS Instances
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub '${ProjectName}-${Environment}-ecs-instance-profile'
+      Roles:
+        - !Ref EC2InstanceRole
+
+  # Jenkins Instance Role
+  JenkinsInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-jenkins-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-jenkins-role'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Jenkins Policy
+  JenkinsPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-${Environment}-jenkins-policy'
+      Roles:
+        - !Ref JenkinsInstanceRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - codeartifact:*
+              - codedeploy:*
+              - codecommit:*
+              - codepipeline:*
+              - ecs:*
+              - elasticloadbalancing:*
+              - ecr:*
+              - secretsmanager:GetSecretValue
+              - cloudformation:DescribeStacks
+            Resource: '*'
+
+  # Jenkins Instance Profile
+  JenkinsInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub '${ProjectName}-${Environment}-jenkins-instance-profile'
+      Roles:
+        - !Ref JenkinsInstanceRole
+
+  # CodeDeploy Role
+  CodeDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-codedeploy-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codedeploy.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-codedeploy-role'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # CodeDeploy-ECS Policy
+  CodeDeployECSPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-${Environment}-codedeploy-ecs-policy'
+      Roles:
+        - !Ref CodeDeployRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - ecs:*
+              - elasticloadbalancing:*
+            Resource: '*'
+
+Outputs:
+  ECSTaskExecutionRole:
+    Description: ARN of ECS Task Execution Role
+    Value: !GetAtt ECSTaskExecutionRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-ecs-task-execution-role'
+
+  ECSTaskRole:
+    Description: ARN of ECS Task Role
+    Value: !GetAtt ECSTaskRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-ecs-task-role'
+
+  JenkinsInstanceProfile:
+    Description: Name of Jenkins Instance Profile
+    Value: !Ref JenkinsInstanceProfile
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-jenkins-instance-profile'
+
+  CodeDeployRole:
+    Description: ARN of CodeDeploy Role
+    Value: !GetAtt CodeDeployRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-codedeploy-role'
+
+  EC2InstanceProfile:
+    Description: Name of EC2 Instance Profile for ECS
+    Value: !Ref EC2InstanceProfile
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-ecs-instance-profile'

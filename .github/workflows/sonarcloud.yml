@@ -1,0 +1,30 @@
+name: SonarCloud Analysis
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    - cron: '0 8 * * 1' # Run weekly on Mondays
+
+jobs:
+  sonarcloud:
+    name: SonarCloud
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Auto-created by GitHub
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}    # Need to be added in GitHub secrets
+        with:
+          args: >
+            -Dsonar.projectKey=your-organization_your-project
+            -Dsonar.organization=your-organization
+            # Add more configuration parameters as needed

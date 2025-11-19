@@ -1,0 +1,208 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ElastiCache resources for ECS-EC2-Jenkins-Git infrastructure'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project name used for resource tagging
+  
+  Environment:
+    Type: String
+    Description: Deployment environment
+  
+  CacheSubnets:
+    Type: String
+    Description: Comma-separated list of cache subnet IDs
+  
+  CacheSecurityGroup:
+    Type: String
+    Description: Cache security group ID
+  
+  CacheNodeType:
+    Type: String
+    Default: cache.t3.micro
+    Description: Node type for ElastiCache
+  
+  CacheNodes:
+    Type: Number
+    Default: 3
+    Description: Number of Redis cache nodes
+
+Resources:
+  # ElastiCache Subnet Group
+  CacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: !Sub 'Cache subnet group for ${ProjectName}-${Environment}'
+      SubnetIds: !Split [',', !Ref CacheSubnets]
+      CacheSubnetGroupName: !Sub '${ProjectName}-${Environment}-cache-subnet-group'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-cache-subnet-group'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ElastiCache Parameter Group
+  CacheParameterGroup:
+    Type: AWS::ElastiCache::ParameterGroup
+    Properties:
+      CacheParameterGroupFamily: redis6.x
+      Description: !Sub 'Cache parameter group for ${ProjectName}-${Environment}'
+      Properties:
+        maxmemory-policy: allkeys-lru
+        cluster-enabled: 'no'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-cache-parameter-group'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ElastiCache Redis Replication Group
+  CacheReplicationGroup:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Properties:
+      ReplicationGroupId: !Sub '${ProjectName}-${Environment}-redis'
+      ReplicationGroupDescription: !Sub 'Redis replication group for ${ProjectName}-${Environment}'
+      Engine: redis
+      EngineVersion: '6.2'
+      CacheNodeType: !Ref CacheNodeType
+      NumNodeGroups: 1
+      ReplicasPerNodeGroup: !Sub ${CacheNodes}
+      AutomaticFailoverEnabled: true
+      AutoMinorVersionUpgrade: true
+      CacheSubnetGroupName: !Ref CacheSubnetGroup
+      SecurityGroupIds:
+        - !Ref CacheSecurityGroup
+      CacheParameterGroupName: !Ref CacheParameterGroup
+      Port: 6379
+      PreferredMaintenanceWindow: 'sun:00:00-sun:03:00'
+      SnapshotRetentionLimit: 7
+      SnapshotWindow: '03:00-05:00'
+      AtRestEncryptionEnabled: true
+      TransitEncryptionEnabled: true
+      MultiAZEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-redis'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Store cache credentials in Secrets Manager
+  CacheCredentialsSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '/${ProjectName}/${Environment}/cache'
+      Description: !Sub 'Cache connection information for ${ProjectName} ${Environment}'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-cache-credentials'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  CacheCredentialsSecretVersion:
+    Type: AWS::SecretsManager::SecretVersionAttachment
+    Properties:
+      SecretId: !Ref CacheCredentialsSecret
+      SecretString: !Sub |
+        {
+          "host": "${CacheReplicationGroup.PrimaryEndPoint.Address}",
+          "port": "${CacheReplicationGroup.PrimaryEndPoint.Port}",
+          "url": "redis://${CacheReplicationGroup.PrimaryEndPoint.Address}:${CacheReplicationGroup.PrimaryEndPoint.Port}"
+        }
+
+  # CloudWatch Alarms for Redis
+  CPUUtilizationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-redis-cpu'
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 2
+      MetricName: CPUUtilization
+      Namespace: AWS/ElastiCache
+      Period: 60
+      Statistic: Average
+      Threshold: 75
+      AlarmDescription: 'Redis CPU utilization is high'
+      Dimensions:
+        - Name: ReplicationGroupId
+          Value: !Ref CacheReplicationGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-redis-cpu-alarm'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  EngineCPUUtilizationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-redis-engine-cpu'
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 2
+      MetricName: EngineCPUUtilization
+      Namespace: AWS/ElastiCache
+      Period: 60
+      Statistic: Average
+      Threshold: 90
+      AlarmDescription: 'Redis engine CPU utilization is high'
+      Dimensions:
+        - Name: ReplicationGroupId
+          Value: !Ref CacheReplicationGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-redis-engine-cpu-alarm'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  DatabaseMemoryUsagePercentageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-redis-memory'
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 2
+      MetricName: DatabaseMemoryUsagePercentage
+      Namespace: AWS/ElastiCache
+      Period: 60
+      Statistic: Average
+      Threshold: 80
+      AlarmDescription: 'Redis memory usage is high'
+      Dimensions:
+        - Name: ReplicationGroupId
+          Value: !Ref CacheReplicationGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-redis-memory-alarm'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+  RedisEndpoint:
+    Description: Primary endpoint address for Redis
+    Value: !GetAtt CacheReplicationGroup.PrimaryEndPoint.Address
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-redis-endpoint'
+
+  RedisPort:
+    Description: Redis port
+    Value: !GetAtt CacheReplicationGroup.PrimaryEndPoint.Port
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-redis-port'
+
+  RedisSecretArn:
+    Description: ARN of Redis credentials secret
+    Value: !Ref CacheCredentialsSecret
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-redis-secret-arn'

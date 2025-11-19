@@ -1,0 +1,339 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'DR Pilot Light Template for ECS-EC2-Jenkins-Git infrastructure'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: ecs-jenkins-github
+    Description: Project name used for resource tagging
+  
+  Environment:
+    Type: String
+    Default: dr
+    Description: Deployment environment
+  
+  AWSRegion:
+    Type: String
+    Default: eu-west-1
+    Description: AWS Region to deploy DR resources (different from primary region)
+
+  PrimaryAWSRegion:
+    Type: String
+    Default: eu-west-2
+    Description: AWS Region where primary resources are deployed
+  
+  KeyPairName:
+    Type: String
+    Default: ''
+    Description: Optional SSH key name for EC2 instances
+  
+  VPCCidr:
+    Type: String
+    Default: 10.1.0.0/16
+    Description: CIDR block for the DR VPC
+
+  PublicSubnetCidrs:
+    Type: CommaDelimitedList
+    Description: Comma-delimited list of public subnet CIDRs
+    Default: 10.1.1.0/24,10.1.2.0/24,10.1.3.0/24
+
+  PrivateSubnetCidrs:
+    Type: CommaDelimitedList
+    Description: Comma-delimited list of private subnet CIDRs
+    Default: 10.1.11.0/24,10.1.12.0/24,10.1.13.0/24
+
+  DatabaseSubnetCidrs:
+    Type: CommaDelimitedList
+    Description: Comma-delimited list of database subnet CIDRs
+    Default: 10.1.21.0/24,10.1.22.0/24,10.1.23.0/24
+  
+  CacheSubnetCidrs:
+    Type: CommaDelimitedList
+    Description: Comma-delimited list of cache subnet CIDRs
+    Default: 10.1.31.0/24,10.1.32.0/24,10.1.33.0/24
+
+  PilotMinCapacity:
+    Type: Number
+    Default: 1
+    Description: Minimum number of instances in pilot light mode
+  
+  PilotMaxCapacity:
+    Type: Number
+    Default: 2
+    Description: Maximum number of instances in pilot light mode
+  
+  PilotDesiredCapacity:
+    Type: Number
+    Default: 1
+    Description: Desired number of instances in pilot light mode
+  
+  FailoverMinCapacity:
+    Type: Number
+    Default: 2
+    Description: Minimum number of instances after failover
+  
+  FailoverMaxCapacity:
+    Type: Number
+    Default: 6
+    Description: Maximum number of instances after failover
+  
+  FailoverDesiredCapacity:
+    Type: Number
+    Default: 4
+    Description: Desired number of instances after failover
+  
+  InstanceType:
+    Type: String
+    Description: EC2 instance type for ECS cluster
+    Default: t3.micro
+    AllowedValues:
+      - t3.nano
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - m5.large
+  
+  DomainName:
+    Type: String
+    Description: The domain name for the application
+    Default: example.com
+  
+  PrimaryALBDNSName:
+    Type: String
+    Description: DNS name of the primary region's ALB
+  
+  PrimaryALBHostedZoneID:
+    Type: String
+    Description: Hosted zone ID of the primary region's ALB
+  
+  Route53HostedZoneId:
+    Type: String
+    Description: ID of the Route53 hosted zone for the domain
+  
+  DBEngine:
+    Type: String
+    Default: postgres
+    AllowedValues:
+      - postgres
+      - mysql
+    Description: Database engine
+  
+  DBEngineVersion:
+    Type: String
+    Default: 15.4
+    Description: Database engine version
+  
+  DBInstanceClass:
+    Type: String
+    Default: db.t3.small
+    Description: RDS instance class for the database
+  
+  CreateRoute53Zone:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Create Route53 hosted zone for the domain
+  
+  EnableElastiCache:
+    Type: String
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Enable ElastiCache deployment
+
+Conditions:
+  ShouldCreateElastiCache: !Equals [!Ref EnableElastiCache, 'true']
+  ShouldCreateRoute53Zone: !Equals [!Ref CreateRoute53Zone, 'true']
+
+Resources:
+  NetworkStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./network.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        VPCCidr: !Ref VPCCidr
+        PublicSubnetCidrs: !Join [',', !Ref PublicSubnetCidrs]
+        PrivateSubnetCidrs: !Join [',', !Ref PrivateSubnetCidrs]
+        DatabaseSubnetCidrs: !Join [',', !Ref DatabaseSubnetCidrs]
+        CacheSubnetCidrs: !Join [',', !Ref CacheSubnetCidrs]
+        AvailabilityZones: !Join [',', [!Sub '${AWSRegion}a', !Sub '${AWSRegion}b', !Sub '${AWSRegion}c']]
+        AllowedSSHCidr: 0.0.0.0/0
+
+  IAMStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./iam.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+  
+  SecurityStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: NetworkStack
+    Properties:
+      TemplateURL: ./security.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        VpcId: !GetAtt NetworkStack.Outputs.VpcId
+        AlbArn: !GetAtt ECSStack.Outputs.ALBArn
+        EnableSecurityHub: false
+        EnableGuardDuty: true
+        EnableConfig: false
+        WAFRateLimit: 100
+        WAFBlockedCountries: ''
+        EnableWafAssociation: false  # No ALB in pilot light
+
+  # Pilot light ECS configuration with minimal capacity
+  ECSStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: 
+      - NetworkStack
+      - IAMStack
+    Properties:
+      TemplateURL: ./ecs.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        VpcId: !GetAtt NetworkStack.Outputs.VpcId
+        PrivateSubnets: !GetAtt NetworkStack.Outputs.PrivateSubnets
+        PublicSubnets: !GetAtt NetworkStack.Outputs.PublicSubnets
+        ALBSecurityGroup: !GetAtt NetworkStack.Outputs.ALBSecurityGroup
+        ECSSecurityGroup: !GetAtt NetworkStack.Outputs.ECSSecurityGroup
+        ECSTaskExecutionRole: !GetAtt IAMStack.Outputs.ECSTaskExecutionRole
+        ECSTaskRole: !GetAtt IAMStack.Outputs.ECSTaskRole
+        ContainerInsights: true
+        InstanceType: !Ref InstanceType
+        KeyPairName: !Ref KeyPairName
+        MinCapacity: !Ref PilotMinCapacity
+        MaxCapacity: !Ref PilotMaxCapacity
+        DesiredTaskCount: 1  # Minimal tasks in pilot light
+        ContainerImage: nginx  # Placeholder image
+        ContainerPort: 80
+        HealthCheckPath: /
+        TaskCPU: 256
+        TaskMemory: 512
+        DomainName: !Sub dr.${DomainName}
+        CreateDummyCert: true
+        ACMCertificateARN: ''
+        # Pilot light specific parameters
+        UseSpotInstances: 'true'
+        OnDemandPercentage: 0
+
+  # DR Lambda function for failover operation
+  DRLambdaStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: 
+      - ECSStack
+    Properties:
+      TemplateURL: ./dr-lambda.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        PrimaryRegion: !Ref PrimaryAWSRegion
+        DRRegion: !Ref AWSRegion
+        ECSClusterName: !GetAtt ECSStack.Outputs.ECSClusterName
+        ECSServiceName: !GetAtt ECSStack.Outputs.ECSServiceName
+        ASGName: !GetAtt ECSStack.Outputs.ECSAutoScalingGroupName
+        PilotMinCapacity: !Ref PilotMinCapacity
+        PilotMaxCapacity: !Ref PilotMaxCapacity
+        PilotDesiredCapacity: !Ref PilotDesiredCapacity
+        FailoverMinCapacity: !Ref FailoverMinCapacity
+        FailoverMaxCapacity: !Ref FailoverMaxCapacity
+        FailoverDesiredCapacity: !Ref FailoverDesiredCapacity
+        TestScheduleExpression: 'cron(5 0 ? * MON#1 *)'  # First Monday of the month at 00:05 AM
+        TestDurationMinutes: 60
+
+  # Route53 failover configuration
+  Route53FailoverStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: 
+      - ECSStack
+      - DRLambdaStack
+    Properties:
+      TemplateURL: ./route53-failover.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        DomainName: !Ref DomainName
+        PrimaryEndpoint: !Ref PrimaryALBDNSName
+        PrimaryZoneId: !Ref PrimaryALBHostedZoneID
+        SecondaryEndpoint: !GetAtt ECSStack.Outputs.ALBDNSName
+        SecondaryZoneId: !GetAtt ECSStack.Outputs.ALBHostedZoneID
+        HealthCheckPath: /health
+        Route53HostedZoneId: !Ref Route53HostedZoneId
+        CreateHostedZone: !Ref CreateRoute53Zone
+        LambdaArn: !GetAtt DRLambdaStack.Outputs.LambdaArn
+        LambdaName: !GetAtt DRLambdaStack.Outputs.LambdaName
+
+  # Database read replica in DR region
+  DatabaseReadReplica:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: NetworkStack
+    Properties:
+      TemplateURL: ./db-read-replica.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        VpcId: !GetAtt NetworkStack.Outputs.VpcId
+        DatabaseSubnets: !GetAtt NetworkStack.Outputs.DatabaseSubnets
+        DBSecurityGroupId: !GetAtt NetworkStack.Outputs.DBSecurityGroup
+        DBEngine: !Ref DBEngine
+        DBEngineVersion: !Ref DBEngineVersion
+        DBInstanceClass: !Ref DBInstanceClass
+        PrimaryDBIdentifier: !Sub ${ProjectName}-prod-db  # Primary DB identifier
+        ReplicaBackupRetentionPeriod: 7
+        MultiAZ: false
+
+  # ElastiCache for DR region (optional)
+  CacheStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: ShouldCreateElastiCache
+    DependsOn: NetworkStack
+    Properties:
+      TemplateURL: ./cache.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        CacheSubnets: !GetAtt NetworkStack.Outputs.CacheSubnets
+        CacheSecurityGroup: !GetAtt NetworkStack.Outputs.CacheSecurityGroup
+        CacheNodeType: cache.t3.micro
+        CacheNodes: 1  # Minimal nodes for DR
+
+  # SNS Topic for DR events
+  DRNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Sub ${ProjectName}-${Environment}-dr-notifications
+      TopicName: !Sub ${ProjectName}-${Environment}-dr-notifications
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  VPCID:
+    Description: DR VPC ID
+    Value: !GetAtt NetworkStack.Outputs.VpcId
+    
+  ALBDNSName:
+    Description: DR Application Load Balancer DNS Name
+    Value: !GetAtt ECSStack.Outputs.ALBDNSName
+    
+  ECSClusterName:
+    Description: DR ECS Cluster Name
+    Value: !GetAtt ECSStack.Outputs.ECSClusterName
+    
+  LambdaArn:
+    Description: DR Failover Lambda ARN
+    Value: !GetAtt DRLambdaStack.Outputs.LambdaArn
+
+  DBReadReplicaEndpoint:
+    Description: DR Database Read Replica Endpoint
+    Value: !GetAtt DatabaseReadReplica.Outputs.DBEndpoint

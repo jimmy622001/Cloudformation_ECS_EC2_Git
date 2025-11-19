@@ -1,0 +1,101 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'IAM Role for GitHub Actions OIDC authentication'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: ecs-jenkins-github
+    Description: Project name used for resource tagging
+  
+  GitHubOrg:
+    Type: String
+    Description: GitHub organization or username
+  
+  GitHubRepo:
+    Type: String
+    Description: GitHub repository name
+  
+  OIDCProviderArn:
+    Type: String
+    Default: ''
+    Description: Arn for the GitHub OIDC Provider
+
+Conditions:
+  CreateOIDCProvider: !Equals [!Ref OIDCProviderArn, '']
+
+Resources:
+  # GitHub OIDC Provider
+  GitHubOIDCProvider:
+    Condition: CreateOIDCProvider
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: 
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+
+  # IAM Role for GitHub Actions OIDC
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-github-actions-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If [CreateOIDCProvider, !GetAtt GitHubOIDCProvider.Arn, !Ref OIDCProviderArn]
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOrg}/${GitHubRepo}:*'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/ReadOnlyAccess'
+      Policies:
+        - PolicyName: CloudFormationDeployment
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'cloudformation:ValidateTemplate'
+                  - 'cloudformation:CreateStack'
+                  - 'cloudformation:UpdateStack'
+                  - 'cloudformation:CreateChangeSet'
+                  - 'cloudformation:ExecuteChangeSet'
+                  - 'cloudformation:DescribeChangeSet'
+                  - 'cloudformation:DescribeStacks'
+                  - 'cloudformation:DescribeStackEvents'
+                  - 'cloudformation:GetTemplate'
+                  - 'cloudformation:ListStackResources'
+                  - 'cloudformation:DeleteStack'
+                  - 'cloudformation:DeleteChangeSet'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 's3:CreateBucket'
+                  - 's3:PutObject'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                  - 'iam:GetRole'
+                Resource: '*'
+
+Outputs:
+  GitHubActionsRoleArn:
+    Description: ARN of the IAM role for GitHub Actions
+    Value: !GetAtt GitHubActionsRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-github-actions-role-arn'
+  
+  OIDCProviderArn:
+    Description: ARN of the GitHub OIDC provider
+    Value: !If [CreateOIDCProvider, !GetAtt GitHubOIDCProvider.Arn, !Ref OIDCProviderArn]
+    Export:
+      Name: !Sub '${ProjectName}-github-oidc-provider-arn'

@@ -1,0 +1,207 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Master template for ECS-EC2-Jenkins-Git infrastructure'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: ecs-jenkins-github
+    Description: Project name used for resource tagging
+  
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, test, prod]
+    Description: Deployment environment
+  
+  AWSRegion:
+    Type: String
+    Default: eu-west-2
+    Description: AWS Region to deploy resources
+
+  KeyPairName:
+    Type: String
+    Default: ''
+    Description: Optional SSH key name for EC2 instances
+
+Resources:
+  NetworkStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./network.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        VPCCidr: 10.0.0.0/16
+        PublicSubnetCidrs: 10.0.1.0/24,10.0.2.0/24,10.0.3.0/24
+        PrivateSubnetCidrs: 10.0.11.0/24,10.0.12.0/24,10.0.13.0/24
+        DatabaseSubnetCidrs: 10.0.21.0/24,10.0.22.0/24,10.0.23.0/24
+        CacheSubnetCidrs: 10.0.31.0/24,10.0.32.0/24,10.0.33.0/24
+        AvailabilityZones: !Join [',', [!Sub '${AWSRegion}a', !Sub '${AWSRegion}b', !Sub '${AWSRegion}c']]
+        AllowedSSHCidr: '{{resolve:ssm:/ecs-jenkins-github/network/allowed-ssh-cidr:1}}'
+
+  IAMStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./iam.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+  
+  SecurityStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: NetworkStack
+    Properties:
+      TemplateURL: ./security.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        VpcId: !GetAtt NetworkStack.Outputs.VpcId
+        AlbArn: !GetAtt ECSStack.Outputs.ALBArn
+        EnableSecurityHub: true
+        EnableGuardDuty: true
+        EnableConfig: true
+        WAFRateLimit: 100
+        WAFBlockedCountries: ''
+        EnableWafAssociation: true
+
+  DatabaseStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: NetworkStack
+    Properties:
+      TemplateURL: ./database.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        VpcId: !GetAtt NetworkStack.Outputs.VpcId
+        DatabaseSubnetIds: !GetAtt NetworkStack.Outputs.DatabaseSubnets
+        DBSecurityGroupId: !GetAtt NetworkStack.Outputs.DBSecurityGroup
+        DBEngine: postgres
+        DBEngineVersion: 15.4
+        DBInstanceClass: db.t3.small
+        DBAllocatedStorage: 20
+        DBMaxAllocatedStorage: 100
+        DBName: appdb
+        DBUsername: '{{resolve:ssm:/ecs-jenkins-github/db/username:1}}'
+        DBPort: 5432
+        DBMultiAZ: false
+        EnablePerformanceInsights: true
+
+  ECSStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: 
+      - NetworkStack
+      - IAMStack
+    Properties:
+      TemplateURL: ./ecs.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        VpcId: !GetAtt NetworkStack.Outputs.VpcId
+        PrivateSubnets: !GetAtt NetworkStack.Outputs.PrivateSubnets
+        PublicSubnets: !GetAtt NetworkStack.Outputs.PublicSubnets
+        ALBSecurityGroup: !GetAtt NetworkStack.Outputs.ALBSecurityGroup
+        ECSSecurityGroup: !GetAtt NetworkStack.Outputs.ECSSecurityGroup
+        ECSTaskExecutionRole: !GetAtt IAMStack.Outputs.ECSTaskExecutionRole
+        ECSTaskRole: !GetAtt IAMStack.Outputs.ECSTaskRole
+        ContainerInsights: true
+        InstanceType: t3.micro
+        KeyPairName: !Ref KeyPairName
+        MinCapacity: 2
+        MaxCapacity: 4
+        DesiredTaskCount: 2
+        ContainerImage: nginx
+        ContainerPort: 80
+        HealthCheckPath: /
+        TaskCPU: 256
+        TaskMemory: 512
+        DomainName: '{{resolve:ssm:/ecs-jenkins-github/ecs/domain-name:1}}'
+        CreateDummyCert: true
+        ACMCertificateARN: ''
+  
+  CICDStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: 
+      - NetworkStack
+      - IAMStack
+      - ECSStack
+    Properties:
+      TemplateURL: ./cicd.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        VpcId: !GetAtt NetworkStack.Outputs.VpcId
+        PublicSubnets: !GetAtt NetworkStack.Outputs.PublicSubnets
+        JenkinsSecurityGroup: !GetAtt NetworkStack.Outputs.JenkinsSecurityGroup
+        JenkinsInstanceProfile: !GetAtt IAMStack.Outputs.JenkinsInstanceProfile
+        CodeDeployRole: !GetAtt IAMStack.Outputs.CodeDeployRole
+        JenkinsInstanceType: t3.small
+        KeyPairName: !Ref KeyPairName
+        GithubRepository: '{{resolve:ssm:/ecs-jenkins-github/cicd/github-repository:1}}'
+        CodeDeployGroupName: app-deployment-group
+        ECSClusterName: !GetAtt ECSStack.Outputs.ECSClusterName
+        ECSServiceName: !GetAtt ECSStack.Outputs.ECSServiceName
+        AlbListenerArn: !GetAtt ECSStack.Outputs.ALBHttpsListenerArn
+        AlbTargetGroupNameBlue: blue-tg
+        AlbTargetGroupNameGreen: green-tg
+
+  MonitoringStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - NetworkStack
+      - IAMStack
+      - ECSStack
+      - DatabaseStack
+    Properties:
+      TemplateURL: ./monitoring.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        VpcId: !GetAtt NetworkStack.Outputs.VpcId
+        PrivateSubnets: !GetAtt NetworkStack.Outputs.PrivateSubnets
+        PublicSubnets: !GetAtt NetworkStack.Outputs.PublicSubnets
+        ECSSecurityGroup: !GetAtt NetworkStack.Outputs.ECSSecurityGroup
+        ECSClusterArn: !GetAtt ECSStack.Outputs.ECSClusterArn
+        ECSClusterName: !GetAtt ECSStack.Outputs.ECSClusterName
+        ECSServiceName: !GetAtt ECSStack.Outputs.ECSServiceName
+        ALBName: !GetAtt ECSStack.Outputs.ALBName
+        DBInstanceId: !GetAtt DatabaseStack.Outputs.DBInstanceId
+        ECSTaskExecutionRole: !GetAtt IAMStack.Outputs.ECSTaskExecutionRole
+        ECSTaskRole: !GetAtt IAMStack.Outputs.ECSTaskRole
+        CreateGrafanaDashboard: true
+        CreatePrometheus: true
+        AlertingEnabled: true
+        GrafanaPassword: '{{resolve:ssm-secure:/ecs-jenkins-github/grafana/password:1}}'
+
+  CacheStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: NetworkStack
+    Properties:
+      TemplateURL: ./cache.yaml
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        CacheSubnets: !GetAtt NetworkStack.Outputs.CacheSubnets
+        CacheSecurityGroup: !GetAtt NetworkStack.Outputs.CacheSecurityGroup
+        CacheNodeType: cache.t3.micro
+        CacheNodes: 3
+
+Outputs:
+  VPCID:
+    Description: VPC ID
+    Value: !GetAtt NetworkStack.Outputs.VpcId
+    
+  ALBDNSName:
+    Description: Application Load Balancer DNS Name
+    Value: !GetAtt ECSStack.Outputs.ALBDNSName
+    
+  ECSClusterName:
+    Description: ECS Cluster Name
+    Value: !GetAtt ECSStack.Outputs.ECSClusterName
+    
+  JenkinsURL:
+    Description: URL for Jenkins server
+    Value: !GetAtt CICDStack.Outputs.JenkinsURL
+    
+  DatabaseEndpoint:
+    Description: RDS Database Endpoint
+    Value: !GetAtt DatabaseStack.Outputs.DBEndpoint

@@ -1,0 +1,576 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ECS resources for ECS-EC2-Jenkins-Git infrastructure'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project name used for resource tagging
+  
+  Environment:
+    Type: String
+    Description: Deployment environment
+  
+  VpcId:
+    Type: String
+    Description: VPC ID
+  
+  PrivateSubnets:
+    Type: String
+    Description: Comma-separated list of private subnet IDs
+  
+  PublicSubnets:
+    Type: String
+    Description: Comma-separated list of public subnet IDs
+  
+  ALBSecurityGroup:
+    Type: String
+    Description: ALB security group ID
+  
+  ECSSecurityGroup:
+    Type: String
+    Description: ECS security group ID
+  
+  ECSTaskExecutionRole:
+    Type: String
+    Description: ARN of ECS task execution role
+  
+  ECSTaskRole:
+    Type: String
+    Description: ARN of ECS task role
+  
+  ContainerInsights:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Enable container insights
+  
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    Description: EC2 instance type for ECS cluster
+  
+  KeyPairName:
+    Type: String
+    Default: ''
+    Description: SSH key name for EC2 instances
+  
+  MinCapacity:
+    Type: Number
+    Default: 2
+    Description: Minimum number of EC2 instances
+  
+  MaxCapacity:
+    Type: Number
+    Default: 4
+    Description: Maximum number of EC2 instances
+  
+  DesiredTaskCount:
+    Type: Number
+    Default: 2
+    Description: Desired number of tasks for ECS service
+  
+  ContainerImage:
+    Type: String
+    Default: nginx
+    Description: Container image name
+  
+  ContainerPort:
+    Type: Number
+    Default: 80
+    Description: Port exposed by the container
+  
+  HealthCheckPath:
+    Type: String
+    Default: /
+    Description: Path for health check
+  
+  TaskCPU:
+    Type: Number
+    Default: 256
+    Description: CPU units for the task
+  
+  TaskMemory:
+    Type: Number
+    Default: 512
+    Description: Memory for the task in MiB
+  
+  DomainName:
+    Type: String
+    Default: example.com
+    Description: Domain name for Route 53 record
+  
+  CreateDummyCert:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Create a dummy certificate for HTTPS
+  
+  ACMCertificateARN:
+    Type: String
+    Default: ''
+    Description: ARN of existing ACM certificate
+
+Conditions:
+  HasKeyPair: !Not [!Equals [!Ref KeyPairName, '']]
+  ShouldCreateDummyCert: !Equals [!Ref CreateDummyCert, 'true']
+  HasCustomCert: !Not [!Equals [!Ref ACMCertificateARN, '']]
+  NeedsNewCertificate: !And [!Equals [!Ref CreateDummyCert, 'true'], !Equals [!Ref ACMCertificateARN, '']]
+
+Resources:
+  # ECS Cluster
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${ProjectName}-${Environment}-cluster'
+      ClusterSettings:
+        - Name: containerInsights
+          Value: !Ref ContainerInsights
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-cluster'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ECS Capacity Provider
+  CapacityProvider:
+    Type: AWS::ECS::CapacityProvider
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-capacity-provider'
+      AutoScalingGroupProvider:
+        AutoScalingGroupArn: !Ref ECSAutoScalingGroup
+        ManagedScaling:
+          Status: ENABLED
+          TargetCapacity: 100
+          MinimumScalingStepSize: 1
+          MaximumScalingStepSize: 10
+        ManagedTerminationProtection: DISABLED
+
+  # Associate Capacity Provider with Cluster
+  ClusterCapacityProviderAssociation:
+    Type: AWS::ECS::ClusterCapacityProviderAssociations
+    Properties:
+      Cluster: !Ref ECSCluster
+      CapacityProviders:
+        - !Ref CapacityProvider
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: !Ref CapacityProvider
+          Weight: 1
+
+  # Latest Amazon Linux 2 ECS-optimized AMI using SSM Parameter
+  ECSOptimizedAMI:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ecs/optimized-ami/amazon-linux-2/recommended/image_id
+
+  # Launch Template for EC2 instances
+  ECSLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub '${ProjectName}-${Environment}-launch-template'
+      LaunchTemplateData:
+        ImageId: !Ref ECSOptimizedAMI
+        InstanceType: !Ref InstanceType
+        KeyName: !If [HasKeyPair, !Ref KeyPairName, !Ref 'AWS::NoValue']
+        IamInstanceProfile:
+          Name: !ImportValue 
+            Fn::Sub: '${ProjectName}-${Environment}-ecs-instance-profile'
+        SecurityGroupIds:
+          - !Ref ECSSecurityGroup
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            echo ECS_CLUSTER=${ECSCluster} >> /etc/ecs/ecs.config
+            echo ECS_ENABLE_CONTAINER_METADATA=true >> /etc/ecs/ecs.config
+            echo ECS_ENABLE_SPOT_INSTANCE_DRAINING=true >> /etc/ecs/ecs.config
+            yum install -y aws-cfn-bootstrap aws-cli jq
+            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource ECSAutoScalingGroup --region ${AWS::Region}
+        Monitoring:
+          Enabled: true
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: !Sub '${ProjectName}-${Environment}-ecs-instance'
+              - Key: Environment
+                Value: !Ref Environment
+              - Key: Project
+                Value: !Ref ProjectName
+
+  # Auto Scaling Group for ECS Instances
+  ECSAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: !Sub '${ProjectName}-${Environment}-ecs-asg'
+      VPCZoneIdentifier: !Split [',', !Ref PrivateSubnets]
+      MinSize: !Ref MinCapacity
+      MaxSize: !Ref MaxCapacity
+      DesiredCapacity: !Ref MinCapacity
+      LaunchTemplate:
+        LaunchTemplateId: !Ref ECSLaunchTemplate
+        Version: !GetAtt ECSLaunchTemplate.LatestVersionNumber
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-ecs-instance'
+          PropagateAtLaunch: true
+        - Key: AmazonECSManaged
+          Value: 'true'
+          PropagateAtLaunch: true
+        - Key: Environment
+          Value: !Ref Environment
+          PropagateAtLaunch: true
+        - Key: Project
+          Value: !Ref ProjectName
+          PropagateAtLaunch: true
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: 1
+        MaxBatchSize: 1
+        PauseTime: PT5M
+        WaitOnResourceSignals: true
+        SuspendProcesses:
+          - HealthCheck
+          - ReplaceUnhealthy
+          - AZRebalance
+          - AlarmNotification
+          - ScheduledActions
+    CreationPolicy:
+      ResourceSignal:
+        Count: !Ref MinCapacity
+        Timeout: PT15M
+
+  # Application Load Balancer
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-alb'
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: '60'
+        - Key: deletion_protection.enabled
+          Value: !If [!Equals [!Ref Environment, 'prod'], 'true', 'false']
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Subnets: !Split [',', !Ref PublicSubnets]
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-alb'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ALB Target Group
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-tg'
+      Protocol: HTTP
+      Port: 80
+      VpcId: !Ref VpcId
+      TargetType: instance
+      HealthCheckPath: !Ref HealthCheckPath
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: traffic-port
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: '200-299'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-tg'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
+
+  # Dummy Certificate (if needed)
+  DummyCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Condition: NeedsNewCertificate
+    Properties:
+      DomainName: !Ref DomainName
+      ValidationMethod: DNS
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-cert'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ALB HTTPS Listener
+  ALBHttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      Certificates:
+        - CertificateArn: !If
+            - HasCustomCert
+            - !Ref ACMCertificateARN
+            - !If
+                - ShouldCreateDummyCert
+                - !Ref DummyCertificate
+                - !Ref 'AWS::NoValue'
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+
+  # ALB HTTP to HTTPS Redirect
+  ALBHttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Port: '443'
+            Protocol: HTTPS
+            StatusCode: HTTP_301
+
+  # CloudWatch Log Group for ECS
+  ECSLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${ProjectName}-${Environment}'
+      RetentionInDays: 30
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-log-group'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ECS Task Definition
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${ProjectName}-${Environment}-task'
+      NetworkMode: bridge
+      RequiresCompatibilities:
+        - EC2
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      TaskRoleArn: !Ref ECSTaskRole
+      Cpu: !Ref TaskCPU
+      Memory: !Ref TaskMemory
+      ContainerDefinitions:
+        - Name: !Sub '${ProjectName}-${Environment}-container'
+          Image: !Sub '${ContainerImage}:latest'
+          Essential: true
+          PortMappings:
+            - ContainerPort: !Ref ContainerPort
+              HostPort: 0  # Dynamic port mapping
+              Protocol: tcp
+          Environment:
+            - Name: ENVIRONMENT
+              Value: !Ref Environment
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ECSLogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: ecs
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - !Sub 'curl -f http://localhost:${ContainerPort}${HealthCheckPath} || exit 1'
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-task'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ECS Service
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn: ALBHttpsListener
+    Properties:
+      ServiceName: !Sub '${ProjectName}-${Environment}-service'
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: !Ref DesiredTaskCount
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 50
+        MaximumPercent: 200
+      HealthCheckGracePeriodSeconds: 60
+      LaunchType: EC2
+      PlacementStrategies:
+        - Type: spread
+          Field: attribute:ecs.availability-zone
+        - Type: spread
+          Field: instanceId
+      LoadBalancers:
+        - TargetGroupArn: !Ref ALBTargetGroup
+          ContainerName: !Sub '${ProjectName}-${Environment}-container'
+          ContainerPort: !Ref ContainerPort
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-service'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Auto Scaling Target for ECS Service
+  ScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: !Ref MaxCapacity
+      MinCapacity: !Ref MinCapacity
+      ResourceId: !Sub 'service/${ECSCluster}/${ECSService}'
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+      RoleARN: !Sub 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService'
+
+  # CPU Scale-Up Policy
+  CPUScaleUpPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-${Environment}-cpu-scale-up'
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: ChangeInCapacity
+        Cooldown: 60
+        MetricAggregationType: Average
+        StepAdjustments:
+          - MetricIntervalLowerBound: 0
+            ScalingAdjustment: 1
+
+  # CPU Scale-Down Policy
+  CPUScaleDownPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-${Environment}-cpu-scale-down'
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: ChangeInCapacity
+        Cooldown: 60
+        MetricAggregationType: Average
+        StepAdjustments:
+          - MetricIntervalUpperBound: 0
+            ScalingAdjustment: -1
+
+  # CloudWatch High CPU Alarm
+  CPUHighAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-cpu-high'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 2
+      MetricName: CPUUtilization
+      Namespace: AWS/ECS
+      Period: 60
+      Statistic: Average
+      Threshold: 75
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ECSCluster
+        - Name: ServiceName
+          Value: !Ref ECSService
+      AlarmDescription: Alarm when CPU utilization is high for scaling up
+      AlarmActions:
+        - !Ref CPUScaleUpPolicy
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-cpu-high-alarm'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # CloudWatch Low CPU Alarm
+  CPULowAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-cpu-low'
+      ComparisonOperator: LessThanOrEqualToThreshold
+      EvaluationPeriods: 2
+      MetricName: CPUUtilization
+      Namespace: AWS/ECS
+      Period: 60
+      Statistic: Average
+      Threshold: 30
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ECSCluster
+        - Name: ServiceName
+          Value: !Ref ECSService
+      AlarmDescription: Alarm when CPU utilization is low for scaling down
+      AlarmActions:
+        - !Ref CPUScaleDownPolicy
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-cpu-low-alarm'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+  ECSClusterArn:
+    Description: ARN of ECS Cluster
+    Value: !GetAtt ECSCluster.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-ecs-cluster-arn'
+
+  ECSClusterName:
+    Description: Name of ECS Cluster
+    Value: !Ref ECSCluster
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-ecs-cluster-name'
+
+  ECSServiceName:
+    Description: Name of ECS Service
+    Value: !Ref ECSService
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-ecs-service-name'
+
+  ALBArn:
+    Description: ARN of the ALB
+    Value: !Ref ALB
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-alb-arn'
+
+  ALBName:
+    Description: Name of the ALB
+    Value: !GetAtt ALB.LoadBalancerName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-alb-name'
+
+  ALBDNSName:
+    Description: DNS name of the ALB
+    Value: !GetAtt ALB.DNSName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-alb-dns-name'
+
+  ALBTargetGroupArn:
+    Description: ARN of the ALB target group
+    Value: !Ref ALBTargetGroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-alb-target-group-arn'
+
+  ALBHttpsListenerArn:
+    Description: ARN of the ALB HTTPS listener
+    Value: !Ref ALBHttpsListener
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-alb-https-listener-arn'

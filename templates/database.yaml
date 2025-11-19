@@ -1,0 +1,361 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Database resources for ECS-EC2-Jenkins-Git infrastructure'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project name used for resource tagging
+  
+  Environment:
+    Type: String
+    Description: Deployment environment
+  
+  VpcId:
+    Type: String
+    Description: VPC ID
+  
+  DatabaseSubnetIds:
+    Type: String
+    Description: Comma-separated list of database subnet IDs
+  
+  DBSecurityGroupId:
+    Type: String
+    Description: Database security group ID
+  
+  DBEngine:
+    Type: String
+    Default: postgres
+    AllowedValues: [postgres, mysql]
+    Description: Database engine
+  
+  DBEngineVersion:
+    Type: String
+    Default: 15.4
+    Description: Database engine version
+  
+  DBInstanceClass:
+    Type: String
+    Default: db.t3.small
+    Description: Database instance class
+  
+  DBAllocatedStorage:
+    Type: Number
+    Default: 20
+    Description: Allocated storage for database in GB
+  
+  DBMaxAllocatedStorage:
+    Type: Number
+    Default: 100
+    Description: Maximum allocated storage for database in GB
+  
+  DBName:
+    Type: String
+    Default: appdb
+    Description: Name of the database
+  
+  DBUsername:
+    Type: String
+    Default: dbadmin
+    Description: Username for the database
+  
+  DBPort:
+    Type: Number
+    Default: 5432
+    Description: Port for the database
+  
+  DBMultiAZ:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Enable multi-AZ for database
+  
+  EnablePerformanceInsights:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Enable Performance Insights
+
+Resources:
+  # Generate random password for database
+  DBPasswordSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '/${ProjectName}/${Environment}/db-password'
+      Description: !Sub 'Database password for ${ProjectName}-${Environment}'
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "dbadmin"}'
+        GenerateStringKey: 'password'
+        PasswordLength: 16
+        ExcludeCharacters: '"@/\'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-db-password'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Create DB Subnet Group
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupName: !Sub '${ProjectName}-${Environment}-db-subnet-group'
+      DBSubnetGroupDescription: !Sub 'DB subnet group for ${ProjectName}-${Environment}'
+      SubnetIds: !Split [',', !Ref DatabaseSubnetIds]
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-db-subnet-group'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Create DB Parameter Group for PostgreSQL
+  PostgreSQLParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Condition: IsPostgreSQL
+    Properties:
+      Description: !Sub 'Parameter group for ${ProjectName}-${Environment} PostgreSQL'
+      Family: !Sub 'postgres${DBEngineVersionClean}'
+      Parameters:
+        max_connections: '100'
+        shared_buffers: '16384'
+        log_statement: 'all'
+        log_min_duration_statement: '1000'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-pg'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Create DB Parameter Group for MySQL
+  MySQLParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Condition: IsMySQL
+    Properties:
+      Description: !Sub 'Parameter group for ${ProjectName}-${Environment} MySQL'
+      Family: !Sub 'mysql${DBEngineVersionClean}'
+      Parameters:
+        max_connections: '100'
+        slow_query_log: '1'
+        long_query_time: '1'
+        general_log: '0'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-pg'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Create Option Group for MySQL
+  MySQLOptionGroup:
+    Type: AWS::RDS::OptionGroup
+    Condition: IsMySQL
+    Properties:
+      EngineName: mysql
+      MajorEngineVersion: !Select [0, !Split ['.', !Ref DBEngineVersion]]
+      OptionGroupDescription: !Sub 'Option group for ${ProjectName}-${Environment} MySQL'
+      OptionConfigurations:
+        - OptionName: MARIADB_AUDIT_PLUGIN
+          OptionSettings:
+            - Name: SERVER_AUDIT_EVENTS
+              Value: CONNECT,QUERY
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-og'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Enhanced Monitoring IAM Role
+  RDSMonitoringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-rds-monitoring-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: monitoring.rds.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-rds-monitoring-role'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # RDS DB Instance
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub '${ProjectName}-${Environment}-db'
+      Engine: !Ref DBEngine
+      EngineVersion: !Ref DBEngineVersion
+      DBInstanceClass: !Ref DBInstanceClass
+      AllocatedStorage: !Ref DBAllocatedStorage
+      MaxAllocatedStorage: !Ref DBMaxAllocatedStorage
+      StorageType: gp3
+      StorageEncrypted: true
+      DBName: !Ref DBName
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${DBPasswordSecret}::password}}'
+      Port: !Ref DBPort
+      VPCSecurityGroups:
+        - !Ref DBSecurityGroupId
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      DBParameterGroupName: !If [IsPostgreSQL, !Ref PostgreSQLParameterGroup, !Ref MySQLParameterGroup]
+      OptionGroupName: !If [IsMySQL, !Ref MySQLOptionGroup, !Ref 'AWS::NoValue']
+      PubliclyAccessible: false
+      MultiAZ: !Ref DBMultiAZ
+      BackupRetentionPeriod: !If [IsProd, 30, 7]
+      BackupWindow: '03:00-04:00'
+      MaintenanceWindow: 'sun:04:30-sun:05:30'
+      DeletionProtection: !If [IsProd, true, false]
+      EnablePerformanceInsights: !Ref EnablePerformanceInsights
+      MonitoringInterval: 60
+      MonitoringRoleArn: !GetAtt RDSMonitoringRole.Arn
+      EnableCloudwatchLogsExports: !If 
+        - IsPostgreSQL
+        - ['postgresql', 'upgrade']
+        - ['audit', 'error', 'general', 'slowquery']
+      CopyTagsToSnapshot: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-db'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Store database credentials in Secrets Manager
+  DBCredentialsSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '/${ProjectName}/${Environment}/database'
+      Description: !Sub 'Database credentials for ${ProjectName} ${Environment}'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-db-credentials'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  DBCredentialsSecretVersion:
+    Type: AWS::SecretsManager::SecretVersionAttachment
+    Properties:
+      SecretId: !Ref DBCredentialsSecret
+      SecretString: !Join 
+        - ''
+        - - '{"username":"'
+          - !Ref DBUsername
+          - '","password":"'
+          - !Sub '{{resolve:secretsmanager:${DBPasswordSecret}::password}}'
+          - '","engine":"'
+          - !Ref DBEngine
+          - '","host":"'
+          - !GetAtt DBInstance.Endpoint.Address
+          - '","port":"'
+          - !GetAtt DBInstance.Endpoint.Port
+          - '","dbname":"'
+          - !Ref DBName
+          - '","url":"'
+          - !Ref DBEngine
+          - '://'
+          - !Ref DBUsername
+          - ':'
+          - !Sub '{{resolve:secretsmanager:${DBPasswordSecret}::password}}'
+          - '@'
+          - !GetAtt DBInstance.Endpoint.Address
+          - ':'
+          - !GetAtt DBInstance.Endpoint.Port
+          - '/'
+          - !Ref DBName
+          - '"}'
+
+  # Lambda function to clean engine version for parameter group family
+  CleanEngineVersionFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: python3.9
+      Role: !GetAtt CleanEngineVersionRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import cfnresponse
+          
+          def handler(event, context):
+              responseData = {}
+              
+              if event['RequestType'] == 'Delete':
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+                  return
+              
+              try:
+                  engine_version = event['ResourceProperties']['EngineVersion']
+                  # Replace dots with nothing to match parameter group family convention
+                  clean_version = engine_version.replace('.', '')
+                  responseData['CleanVersion'] = clean_version
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+              except Exception as e:
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": str(e)})
+      Timeout: 30
+
+  CleanEngineVersionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  CleanVersionCustomResource:
+    Type: Custom::CleanVersion
+    Properties:
+      ServiceToken: !GetAtt CleanEngineVersionFunction.Arn
+      EngineVersion: !Ref DBEngineVersion
+
+Conditions:
+  IsPostgreSQL: !Equals [!Ref DBEngine, 'postgres']
+  IsMySQL: !Equals [!Ref DBEngine, 'mysql']
+  IsProd: !Equals [!Ref Environment, 'prod']
+
+Outputs:
+  DBEndpoint:
+    Description: Database endpoint address
+    Value: !GetAtt DBInstance.Endpoint.Address
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-db-endpoint'
+
+  DBInstanceId:
+    Description: Database instance ID
+    Value: !Ref DBInstance
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-db-instance-id'
+
+  DBPort:
+    Description: Database port
+    Value: !GetAtt DBInstance.Endpoint.Port
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-db-port'
+
+  DBSecretArn:
+    Description: ARN of database credentials secret
+    Value: !Ref DBCredentialsSecret
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-db-secret-arn'

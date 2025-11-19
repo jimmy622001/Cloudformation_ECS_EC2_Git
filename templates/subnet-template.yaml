@@ -1,0 +1,277 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Reusable subnet template for creating different subnet types'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project name used for resource tagging
+  
+  Environment:
+    Type: String
+    Description: Deployment environment
+  
+  VpcId:
+    Type: String
+    Description: VPC ID
+  
+  SubnetType:
+    Type: String
+    Description: Type of subnet (Public, Private, Database, Cache)
+    AllowedValues: [Public, Private, Database, Cache]
+  
+  SubnetCidrs:
+    Type: String
+    Description: Comma-separated list of subnet CIDR blocks
+  
+  AvailabilityZones:
+    Type: String
+    Description: Comma-separated list of availability zones
+  
+  CreateNatGateway:
+    Type: String
+    Description: Whether to create NAT Gateway for this subnet
+    AllowedValues: [true, false]
+    Default: false
+  
+  AssociatePublicIpOnLaunch:
+    Type: String
+    Description: Whether to auto-assign public IP on launch
+    AllowedValues: [true, false]
+    Default: false
+
+  NatGatewayIds:
+    Type: String
+    Description: Comma-separated list of NAT Gateway IDs for route tables
+    Default: ''
+
+Resources:
+  # Lambda function to parse list parameters
+  ListParserFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: python3.9
+      Role: !GetAtt ListParserFunctionRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import cfnresponse
+          
+          def handler(event, context):
+              responseData = {}
+              
+              if event['RequestType'] == 'Delete':
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+                  return
+              
+              try:
+                  subnets = event['ResourceProperties'].get('SubnetCidrs', '').split(',')
+                  azs = event['ResourceProperties'].get('AvailabilityZones', '').split(',')
+                  nat_gateways = event['ResourceProperties'].get('NatGatewayIds', '')
+                  
+                  if nat_gateways:
+                      nat_gateways = nat_gateways.split(',')
+                  
+                  # Create mapping
+                  mapping = []
+                  
+                  for i in range(len(subnets)):
+                      item = {}
+                      item['SubnetCidr'] = subnets[i] if i < len(subnets) else ''
+                      item['AZ'] = azs[i % len(azs)] if azs else ''
+                      item['Index'] = str(i)
+                      
+                      if nat_gateways and i < len(nat_gateways):
+                          item['NatGatewayId'] = nat_gateways[i]
+                          
+                      mapping.append(item)
+                  
+                  responseData['Mapping'] = mapping
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+              except Exception as e:
+                  responseData['Error'] = str(e)
+                  cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
+      Timeout: 30
+
+  ListParserFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  # Custom resource to process list parameters
+  SubnetMapping:
+    Type: Custom::SubnetMapping
+    Properties:
+      ServiceToken: !GetAtt ListParserFunction.Arn
+      SubnetCidrs: !Ref SubnetCidrs
+      AvailabilityZones: !Ref AvailabilityZones
+      NatGatewayIds: !Ref NatGatewayIds
+
+  # Create Subnets
+  Subnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcId
+      CidrBlock: !Select [0, !Split [",", !Ref SubnetCidrs]]
+      AvailabilityZone: !Select [0, !Split [",", !Ref AvailabilityZones]]
+      MapPublicIpOnLaunch: !Ref AssociatePublicIpOnLaunch
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-${SubnetType}-subnet-1'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Type
+          Value: !Ref SubnetType
+
+  Subnet2:
+    Type: AWS::EC2::Subnet
+    Condition: HasSubnet2
+    Properties:
+      VpcId: !Ref VpcId
+      CidrBlock: !Select [1, !Split [",", !Ref SubnetCidrs]]
+      AvailabilityZone: !Select [1, !Split [",", !Ref AvailabilityZones]]
+      MapPublicIpOnLaunch: !Ref AssociatePublicIpOnLaunch
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-${SubnetType}-subnet-2'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Type
+          Value: !Ref SubnetType
+
+  Subnet3:
+    Type: AWS::EC2::Subnet
+    Condition: HasSubnet3
+    Properties:
+      VpcId: !Ref VpcId
+      CidrBlock: !Select [2, !Split [",", !Ref SubnetCidrs]]
+      AvailabilityZone: !Select [2, !Split [",", !Ref AvailabilityZones]]
+      MapPublicIpOnLaunch: !Ref AssociatePublicIpOnLaunch
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-${SubnetType}-subnet-3'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Type
+          Value: !Ref SubnetType
+
+  # Create Route Tables
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-${SubnetType}-rt-1'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Create Routes (conditionally)
+  PublicRoute:
+    Type: AWS::EC2::Route
+    Condition: IsPublicSubnet
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !ImportValue
+        Fn::Sub: ${ProjectName}-${Environment}-internet-gateway
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Condition: IsPrivateSubnetWithNat
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Select [0, !Split [",", !Ref NatGatewayIds]]
+
+  # Create NAT Gateways (only for public subnets)
+  EIP:
+    Type: AWS::EC2::EIP
+    Condition: CreateNatGateway
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-eip-1'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Condition: CreateNatGateway
+    Properties:
+      AllocationId: !GetAtt EIP.AllocationId
+      SubnetId: !Ref Subnet
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-nat-1'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Route Table Associations
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref Subnet
+      RouteTableId: !Ref RouteTable
+
+  Subnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: HasSubnet2
+    Properties:
+      SubnetId: !Ref Subnet2
+      RouteTableId: !Ref RouteTable
+
+  Subnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: HasSubnet3
+    Properties:
+      SubnetId: !Ref Subnet3
+      RouteTableId: !Ref RouteTable
+
+Conditions:
+  HasSubnet2: !Not [!Equals [!Select [1, !Split [",", !Ref SubnetCidrs]], ""]]
+  HasSubnet3: !Not [!Equals [!Select [2, !Split [",", !Ref SubnetCidrs]], ""]]
+  IsPublicSubnet: !Equals [!Ref SubnetType, "Public"]
+  IsPrivateSubnetWithNat: !And
+    - !Not [!Equals [!Ref SubnetType, "Public"]]
+    - !Not [!Equals [!Ref NatGatewayIds, ""]]
+  CreateNatGateway: !Equals [!Ref CreateNatGateway, "true"]
+
+Outputs:
+  SubnetIds:
+    Description: List of subnet IDs
+    Value: !Join
+      - ","
+      - - !Ref Subnet
+        - !If [HasSubnet2, !Ref Subnet2, ""]
+        - !If [HasSubnet3, !Ref Subnet3, ""]
+
+  NatGatewayIds:
+    Description: List of NAT Gateway IDs
+    Condition: CreateNatGateway
+    Value: !Ref NatGateway
+
+  RouteTableId:
+    Description: Route Table ID
+    Value: !Ref RouteTable

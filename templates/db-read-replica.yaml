@@ -1,0 +1,159 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Database Read Replica Template for ECS-EC2-Jenkins-Git infrastructure'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: ecs-jenkins-github
+    Description: Project name used for resource tagging
+  
+  Environment:
+    Type: String
+    Default: dr
+    Description: Deployment environment
+  
+  VpcId:
+    Type: String
+    Description: VPC ID for database resources
+  
+  DatabaseSubnets:
+    Type: List<String>
+    Description: List of database subnet IDs
+  
+  DBSecurityGroupId:
+    Type: String
+    Description: Security group ID for database access
+  
+  DBEngine:
+    Type: String
+    Default: postgres
+    AllowedValues:
+      - postgres
+      - mysql
+    Description: Database engine
+  
+  DBEngineVersion:
+    Type: String
+    Default: 15.4
+    Description: Database engine version
+  
+  DBInstanceClass:
+    Type: String
+    Default: db.t3.small
+    Description: RDS instance class for the database
+  
+  PrimaryDBIdentifier:
+    Type: String
+    Description: Identifier of the primary database instance
+  
+  ReplicaBackupRetentionPeriod:
+    Type: Number
+    Default: 7
+    Description: The number of days to retain backups of the read replica
+    MinValue: 0
+    MaxValue: 35
+  
+  MultiAZ:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Enable Multi-AZ deployment for DR read replica
+
+Conditions:
+  IsMultiAZEnabled: !Equals [!Ref MultiAZ, 'true']
+
+Resources:
+  # DB Subnet Group
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub ${ProjectName}-${Environment}-db-subnet-group
+      SubnetIds: !Ref DatabaseSubnets
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-${Environment}-db-subnet-group
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Read replica for DR
+  DBReadReplica:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub ${ProjectName}-${Environment}-read-replica
+      SourceDBInstanceIdentifier: !Ref PrimaryDBIdentifier
+      DBInstanceClass: !Ref DBInstanceClass
+      Engine: !Ref DBEngine
+      PubliclyAccessible: false
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref DBSecurityGroupId
+      MultiAZ: !If [IsMultiAZEnabled, true, false]
+      BackupRetentionPeriod: !Ref ReplicaBackupRetentionPeriod
+      EnablePerformanceInsights: true
+      StorageEncrypted: true
+      CopyTagsToSnapshot: true
+      EnableCloudwatchLogsExports:
+        - !If [!Equals [!Ref DBEngine, 'postgres'], 'postgresql', 'error']
+        - !If [!Equals [!Ref DBEngine, 'postgres'], 'upgrade', 'general']
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-${Environment}-read-replica
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: DR
+          Value: true
+
+  # SNS Topic for replication failures
+  ReplicationFailuresTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${ProjectName}-${Environment}-replication-failures
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # RDS event subscription for replication failures
+  RDSEventSubscription:
+    Type: AWS::RDS::EventSubscription
+    Properties:
+      EventCategories:
+        - availability
+        - deletion
+        - failover
+        - failure
+        - low storage
+        - maintenance
+        - notification
+        - recovery
+        - replication
+      SnsTopicArn: !Ref ReplicationFailuresTopic
+      SourceIds:
+        - !Ref DBReadReplica
+      SourceType: db-instance
+      Enabled: true
+      SubscriptionName: !Sub ${ProjectName}-${Environment}-replication-failures
+
+Outputs:
+  DBEndpoint:
+    Description: Endpoint of the DR DB read replica
+    Value: !GetAtt DBReadReplica.Endpoint.Address
+  
+  DBPort:
+    Description: Port of the DR DB read replica
+    Value: !GetAtt DBReadReplica.Endpoint.Port
+  
+  DBIdentifier:
+    Description: Identifier of the DR DB read replica
+    Value: !Ref DBReadReplica
+  
+  ReplicationFailureTopicArn:
+    Description: ARN of the SNS topic for replication failures
+    Value: !Ref ReplicationFailuresTopic

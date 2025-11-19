@@ -1,0 +1,110 @@
+{
+  "rules": [
+    {
+      "name": "S3BucketEncryption",
+      "description": "Ensure S3 buckets are encrypted",
+      "rule": "let buckets = Resources.*[ Type == 'AWS::S3::Bucket' ]",
+      "assertions": [
+        {
+          "or": [
+            {
+              "every": {
+                "of": "%buckets",
+                "expression": "Properties.BucketEncryption exists"
+              }
+            },
+            {
+              "every": {
+                "of": "%buckets",
+                "expression": "Properties.BucketEncryption.ServerSideEncryptionConfiguration[*].ServerSideEncryptionByDefault.SSEAlgorithm exists"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "S3PublicAccess",
+      "description": "Ensure S3 buckets block public access",
+      "rule": "let buckets = Resources.*[ Type == 'AWS::S3::Bucket' ]",
+      "assertions": [
+        {
+          "every": {
+            "of": "%buckets",
+            "expression": "Properties.PublicAccessBlockConfiguration exists"
+          }
+        },
+        {
+          "every": {
+            "of": "%buckets",
+            "expression": "Properties.PublicAccessBlockConfiguration.BlockPublicAcls == true"
+          }
+        },
+        {
+          "every": {
+            "of": "%buckets",
+            "expression": "Properties.PublicAccessBlockConfiguration.BlockPublicPolicy == true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "RDSEncryption",
+      "description": "Ensure RDS instances are encrypted",
+      "rule": "let rds_instances = Resources.*[ Type == 'AWS::RDS::DBInstance' ]",
+      "assertions": [
+        {
+          "every": {
+            "of": "%rds_instances",
+            "expression": "Properties.StorageEncrypted == true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ELBHTTPS",
+      "description": "Ensure ELB uses HTTPS",
+      "rule": "let listeners = Resources.*[ Type == 'AWS::ElasticLoadBalancingV2::Listener' ]",
+      "assertions": [
+        {
+          "every": {
+            "of": "%listeners",
+            "expression": "Properties.Protocol in ['HTTPS', 'TLS']"
+          }
+        }
+      ]
+    },
+    {
+      "name": "IAMRolePolicies",
+      "description": "Ensure IAM roles don't use wildcards",
+      "rule": "let iam_roles = Resources.*[ Type == 'AWS::IAM::Role' ]",
+      "assertions": [
+        {
+          "some": {
+            "of": "%iam_roles",
+            "expression": "Properties.ManagedPolicyArns not exists or Properties.ManagedPolicyArns[*] != '*'"
+          }
+        },
+        {
+          "some": {
+            "of": "%iam_roles",
+            "expression": "Properties.Policies not exists or Properties.Policies[*].PolicyDocument.Statement[*].Resource != '*'"
+          }
+        }
+      ]
+    },
+    {
+      "name": "EC2SecurityGroups",
+      "description": "Ensure Security Groups don't allow ingress from 0.0.0.0/0 to port 22 (SSH)",
+      "rule": "let security_groups = Resources.*[ Type == 'AWS::EC2::SecurityGroup' ]",
+      "assertions": [
+        {
+          "some": {
+            "of": "%security_groups",
+            "expression": "Properties.SecurityGroupIngress not exists or (Properties.SecurityGroupIngress[*].CidrIp != '0.0.0.0/0' or Properties.SecurityGroupIngress[*].FromPort != 22)"
+          }
+        }
+      ]
+    }
+  ]
+}

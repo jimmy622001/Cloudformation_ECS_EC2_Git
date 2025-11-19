@@ -1,0 +1,377 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CI/CD resources for ECS-EC2-Jenkins-Git infrastructure'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project name used for resource tagging
+  
+  Environment:
+    Type: String
+    Description: Deployment environment
+  
+  VpcId:
+    Type: String
+    Description: VPC ID
+  
+  PublicSubnets:
+    Type: String
+    Description: Comma-separated list of public subnet IDs
+  
+  JenkinsSecurityGroup:
+    Type: String
+    Description: Jenkins security group ID
+  
+  JenkinsInstanceProfile:
+    Type: String
+    Description: Jenkins instance profile name
+  
+  CodeDeployRole:
+    Type: String
+    Description: ARN of CodeDeploy role
+  
+  JenkinsInstanceType:
+    Type: String
+    Default: t3.small
+    Description: Jenkins instance type
+  
+  KeyPairName:
+    Type: String
+    Default: ''
+    Description: SSH key name for EC2 instances
+  
+  GithubRepository:
+    Type: String
+    Default: your-org/your-repo
+    Description: GitHub repository for CI/CD integration
+  
+  CodeDeployGroupName:
+    Type: String
+    Default: app-deployment-group
+    Description: CodeDeploy deployment group name
+  
+  ECSClusterName:
+    Type: String
+    Description: ECS cluster name
+  
+  ECSServiceName:
+    Type: String
+    Description: ECS service name
+  
+  AlbListenerArn:
+    Type: String
+    Description: ARN of the ALB listener
+  
+  AlbTargetGroupNameBlue:
+    Type: String
+    Default: blue-tg
+    Description: Name of the blue target group
+  
+  AlbTargetGroupNameGreen:
+    Type: String
+    Default: green-tg
+    Description: Name of the green target group
+
+Conditions:
+  HasKeyPair: !Not [!Equals [!Ref KeyPairName, '']]
+
+Resources:
+  # Latest Amazon Linux 2 AMI using SSM Parameter
+  JenkinsAMI:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+
+  # Jenkins EC2 Instance
+  JenkinsInstance:
+    Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT15M
+    Properties:
+      InstanceType: !Ref JenkinsInstanceType
+      ImageId: !Ref JenkinsAMI
+      KeyName: !If [HasKeyPair, !Ref KeyPairName, !Ref 'AWS::NoValue']
+      IamInstanceProfile: !Ref JenkinsInstanceProfile
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          GroupSet:
+            - !Ref JenkinsSecurityGroup
+          SubnetId: !Select [0, !Split [',', !Ref PublicSubnets]]
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          
+          # Update and install dependencies
+          yum update -y
+          yum install -y git docker amazon-cloudwatch-agent jq wget
+          
+          # Start Docker service
+          systemctl enable docker
+          systemctl start docker
+          
+          # Install Jenkins
+          wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
+          rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io.key
+          yum install -y jenkins java-11-amazon-corretto
+          systemctl enable jenkins
+          systemctl start jenkins
+          
+          # Install AWS CLI v2
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          ./aws/install
+          
+          # Install CodeDeploy agent
+          wget https://aws-codedeploy-${AWS::Region}.s3.${AWS::Region}.amazonaws.com/latest/install
+          chmod +x ./install
+          ./install auto
+          
+          # Install Node.js and npm (for application deployments)
+          curl -sL https://rpm.nodesource.com/setup_16.x | bash -
+          yum install -y nodejs
+          
+          # Create Jenkins configuration script
+          cat > /tmp/jenkins_config.groovy << 'EOF'
+          import jenkins.model.*
+          import hudson.security.*
+          import hudson.util.*
+          import jenkins.install.*
+          import jenkins.security.s2m.AdminWhitelistRule
+          import hudson.security.csrf.DefaultCrumbIssuer
+          import java.util.logging.Logger
+          
+          def logger = Logger.getLogger("")
+          
+          // Set Jenkins to use a random admin password initially
+          def env = System.getenv()
+          def jenkins = Jenkins.getInstance()
+          jenkins.setSecurityRealm(new HudsonPrivateSecurityRealm(false))
+          def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
+          strategy.setAllowAnonymousRead(false)
+          jenkins.setAuthorizationStrategy(strategy)
+          jenkins.save()
+          
+          logger.info("Initial Jenkins setup complete")
+          EOF
+          
+          # Set configuration script to run at Jenkins start
+          mkdir -p /var/lib/jenkins/init.groovy.d
+          cp /tmp/jenkins_config.groovy /var/lib/jenkins/init.groovy.d/
+          chown -R jenkins:jenkins /var/lib/jenkins/init.groovy.d/
+          
+          # Restart Jenkins to apply settings
+          systemctl restart jenkins
+          
+          # Signal completion to CloudFormation
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource JenkinsInstance --region ${AWS::Region}
+          
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-jenkins'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Elastic IP for Jenkins
+  JenkinsEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref JenkinsInstance
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-jenkins-eip'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Blue Target Group for Blue/Green Deployment
+  BlueTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Ref AlbTargetGroupNameBlue
+      Protocol: HTTP
+      Port: 80
+      VpcId: !Ref VpcId
+      TargetType: instance
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: traffic-port
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: '200-299'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-blue-tg'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Green Target Group for Blue/Green Deployment
+  GreenTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Ref AlbTargetGroupNameGreen
+      Protocol: HTTP
+      Port: 80
+      VpcId: !Ref VpcId
+      TargetType: instance
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: traffic-port
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: '200-299'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-green-tg'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # CodeDeploy Application
+  CodeDeployApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: !Sub '${ProjectName}-${Environment}-app'
+      ComputePlatform: ECS
+
+  # CodeDeploy Deployment Group
+  DeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties:
+      ApplicationName: !Ref CodeDeployApplication
+      DeploymentGroupName: !Ref CodeDeployGroupName
+      DeploymentConfigName: CodeDeployDefault.ECSAllAtOnce
+      ServiceRoleArn: !Ref CodeDeployRole
+      DeploymentStyle:
+        DeploymentType: BLUE_GREEN
+        DeploymentOption: WITH_TRAFFIC_CONTROL
+      BlueGreenDeploymentConfiguration:
+        DeploymentReadyOption:
+          ActionOnTimeout: CONTINUE_DEPLOYMENT
+          WaitTimeInMinutes: 0
+        TerminateBlueInstancesOnDeploymentSuccess:
+          Action: TERMINATE
+          TerminationWaitTimeInMinutes: 5
+      ECSServices:
+        - ClusterName: !Ref ECSClusterName
+          ServiceName: !Ref ECSServiceName
+      LoadBalancerInfo:
+        TargetGroupPairInfoList:
+          - ProdTrafficRoute:
+              ListenerArns:
+                - !Ref AlbListenerArn
+            TargetGroups:
+              - Name: !Ref BlueTargetGroup
+              - Name: !Ref GreenTargetGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-deployment-group'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # S3 Bucket for Artifacts
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-${Environment}-artifacts-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldArtifacts
+            Status: Enabled
+            ExpirationInDays: 30
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-artifacts'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Bucket Policy for Artifact Bucket
+  ArtifactBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ArtifactBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !Sub 'arn:aws:s3:::${ArtifactBucket}'
+              - !Sub 'arn:aws:s3:::${ArtifactBucket}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  # CloudWatch Log Group for Jenkins
+  JenkinsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/jenkins/${ProjectName}-${Environment}'
+      RetentionInDays: 30
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-jenkins-logs'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+  JenkinsURL:
+    Description: URL for Jenkins server
+    Value: !Sub 'http://${JenkinsEIP.PublicIp}:8080'
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-jenkins-url'
+
+  JenkinsIPAddress:
+    Description: Public IP address of Jenkins server
+    Value: !Ref JenkinsEIP
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-jenkins-ip'
+
+  CodeDeployAppName:
+    Description: CodeDeploy application name
+    Value: !Ref CodeDeployApplication
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-codedeploy-app'
+
+  CodeDeployGroupName:
+    Description: CodeDeploy deployment group name
+    Value: !Ref DeploymentGroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-codedeploy-group'
+
+  ArtifactBucketName:
+    Description: S3 bucket for deployment artifacts
+    Value: !Ref ArtifactBucket
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-artifact-bucket'

@@ -1,0 +1,94 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "ecs-jenkins-github"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "dr"
+  },
+  {
+    "ParameterKey": "AWSRegion",
+    "ParameterValue": "eu-west-1"
+  },
+  {
+    "ParameterKey": "PrimaryAWSRegion",
+    "ParameterValue": "eu-west-2"
+  },
+  {
+    "ParameterKey": "VPCCidr",
+    "ParameterValue": "10.2.0.0/16"
+  },
+  {
+    "ParameterKey": "PublicSubnetCidrs",
+    "ParameterValue": "10.2.1.0/24,10.2.2.0/24,10.2.3.0/24"
+  },
+  {
+    "ParameterKey": "PrivateSubnetCidrs",
+    "ParameterValue": "10.2.11.0/24,10.2.12.0/24,10.2.13.0/24"
+  },
+  {
+    "ParameterKey": "DatabaseSubnetCidrs",
+    "ParameterValue": "10.2.21.0/24,10.2.22.0/24,10.2.23.0/24"
+  },
+  {
+    "ParameterKey": "CacheSubnetCidrs",
+    "ParameterValue": "10.2.31.0/24,10.2.32.0/24,10.2.33.0/24"
+  },
+  {
+    "ParameterKey": "PilotMinCapacity",
+    "ParameterValue": "1"
+  },
+  {
+    "ParameterKey": "PilotMaxCapacity",
+    "ParameterValue": "2"
+  },
+  {
+    "ParameterKey": "PilotDesiredCapacity",
+    "ParameterValue": "1"
+  },
+  {
+    "ParameterKey": "FailoverMinCapacity",
+    "ParameterValue": "4"
+  },
+  {
+    "ParameterKey": "FailoverMaxCapacity",
+    "ParameterValue": "8"
+  },
+  {
+    "ParameterKey": "FailoverDesiredCapacity",
+    "ParameterValue": "4"
+  },
+  {
+    "ParameterKey": "InstanceType",
+    "ParameterValue": "t3.micro"
+  },
+  {
+    "ParameterKey": "DomainName",
+    "ParameterValue": "example.com"
+  },
+  {
+    "ParameterKey": "PrimaryALBDNSName",
+    "ParameterValue": "replace-with-primary-alb-dns-name"
+  },
+  {
+    "ParameterKey": "PrimaryALBHostedZoneID",
+    "ParameterValue": "replace-with-primary-alb-zone-id"
+  },
+  {
+    "ParameterKey": "Route53HostedZoneId",
+    "ParameterValue": "replace-with-route53-hosted-zone-id"
+  },
+  {
+    "ParameterKey": "DBEngine",
+    "ParameterValue": "postgres"
+  },
+  {
+    "ParameterKey": "DBInstanceClass",
+    "ParameterValue": "db.t3.small"
+  },
+  {
+    "ParameterKey": "EnableElastiCache",
+    "ParameterValue": "true"
+  }
+]

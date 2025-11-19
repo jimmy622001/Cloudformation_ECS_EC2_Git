@@ -1,0 +1,326 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Security resources for ECS-EC2-Jenkins-Git infrastructure'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project name used for resource tagging
+  
+  Environment:
+    Type: String
+    Description: Deployment environment
+  
+  VpcId:
+    Type: String
+    Description: VPC ID
+  
+  AlbArn:
+    Type: String
+    Description: ARN of ALB
+  
+  WAFRateLimit:
+    Type: Number
+    Default: 100
+    Description: Rate limit for IP-based throttling (requests/5min)
+  
+  WAFBlockedCountries:
+    Type: String
+    Default: ''
+    Description: Comma-separated list of country codes to block (ISO 3166-1 alpha-2 codes)
+  
+  EnableSecurityHub:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Enable AWS Security Hub
+  
+  EnableGuardDuty:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Enable AWS GuardDuty
+  
+  EnableConfig:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Enable AWS Config
+  
+  EnableWafAssociation:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Enable WAF association with ALB
+
+Conditions:
+  ShouldEnableSecurityHub: !Equals [!Ref EnableSecurityHub, 'true']
+  ShouldEnableGuardDuty: !Equals [!Ref EnableGuardDuty, 'true']
+  ShouldEnableConfig: !Equals [!Ref EnableConfig, 'true']
+  ShouldAssociateWaf: !Equals [!Ref EnableWafAssociation, 'true']
+  HasBlockedCountries: !Not [!Equals [!Ref WAFBlockedCountries, '']]
+
+Resources:
+  # Web ACL for WAF
+  WebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-web-acl'
+      Scope: REGIONAL
+      Description: !Sub 'Web ACL for ${ProjectName}-${Environment}'
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub '${ProjectName}-${Environment}-web-acl'
+      Rules:
+        - Name: AWSManagedRulesCommonRuleSet
+          Priority: 0
+          OverrideAction:
+            None: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesCommonRuleSet
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+              ExcludedRules: []
+        - Name: AWSManagedRulesSQLiRuleSet
+          Priority: 1
+          OverrideAction:
+            None: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesSQLiRuleSet
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesSQLiRuleSet
+              ExcludedRules: []
+        - Name: RateLimitRule
+          Priority: 2
+          Action:
+            Block: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: RateLimitRule
+          Statement:
+            RateBasedStatement:
+              Limit: !Ref WAFRateLimit
+              AggregateKeyType: IP
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-web-acl'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # WAF Geo Restriction Rule
+  GeoBlockRule:
+    Type: AWS::WAFv2::RuleGroup
+    Condition: HasBlockedCountries
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-geo-block'
+      Scope: REGIONAL
+      Capacity: 10
+      Description: Rule group to block countries
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub '${ProjectName}-${Environment}-geo-block'
+      Rules:
+        - Name: BlockCountries
+          Priority: 0
+          Action:
+            Block: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: BlockCountries
+          Statement:
+            GeoMatchStatement:
+              CountryCodes: !Split [',', !Ref WAFBlockedCountries]
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-geo-block'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # WAF Web ACL Association with ALB
+  WebACLAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Condition: ShouldAssociateWaf
+    Properties:
+      ResourceArn: !Ref AlbArn
+      WebACLArn: !GetAtt WebACL.Arn
+
+  # S3 Bucket for AWS Config
+  ConfigBucket:
+    Type: AWS::S3::Bucket
+    Condition: ShouldEnableConfig
+    Properties:
+      BucketName: !Sub '${ProjectName}-${Environment}-config-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-config'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Bucket Policy for Config Bucket
+  ConfigBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: ShouldEnableConfig
+    Properties:
+      Bucket: !Ref ConfigBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AWSConfigBucketPermissionsCheck
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !Sub 'arn:aws:s3:::${ConfigBucket}'
+          - Sid: AWSConfigBucketDelivery
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub 'arn:aws:s3:::${ConfigBucket}/AWSLogs/${AWS::AccountId}/Config/*'
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+          - Sid: ForceSSL
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !Sub 'arn:aws:s3:::${ConfigBucket}'
+              - !Sub 'arn:aws:s3:::${ConfigBucket}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  # IAM Role for AWS Config
+  ConfigRole:
+    Type: AWS::IAM::Role
+    Condition: ShouldEnableConfig
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWS_ConfigRole
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-config-role'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # AWS Config Configuration Recorder
+  ConfigRecorder:
+    Type: AWS::Config::ConfigurationRecorder
+    Condition: ShouldEnableConfig
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-recorder'
+      RecordingGroup:
+        AllSupported: true
+        IncludeGlobalResourceTypes: true
+      RoleARN: !GetAtt ConfigRole.Arn
+
+  # AWS Config Delivery Channel
+  ConfigDeliveryChannel:
+    Type: AWS::Config::DeliveryChannel
+    Condition: ShouldEnableConfig
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-delivery-channel'
+      S3BucketName: !Ref ConfigBucket
+      ConfigSnapshotDeliveryProperties:
+        DeliveryFrequency: Six_Hours
+
+  # Enable GuardDuty
+  GuardDutyDetector:
+    Type: AWS::GuardDuty::Detector
+    Condition: ShouldEnableGuardDuty
+    Properties:
+      Enable: true
+      FindingPublishingFrequency: ONE_HOUR
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-guard-duty'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Enable Security Hub
+  SecurityHub:
+    Type: AWS::SecurityHub::Hub
+    Condition: ShouldEnableSecurityHub
+    Properties:
+      Tags:
+        Name: !Sub '${ProjectName}-${Environment}-security-hub'
+        Environment: !Ref Environment
+        Project: !Ref ProjectName
+
+  # Secret Policies for Database Credentials
+  SecretsPolicy:
+    Type: AWS::SecretsManager::ResourcePolicy
+    Properties:
+      SecretId: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:/${ProjectName}/${Environment}/database-*
+      ResourcePolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Deny
+            Principal: '*'
+            Action: secretsmanager:GetSecretValue
+            Resource: '*'
+            Condition:
+              StringNotEquals:
+                aws:PrincipalOrgID: '${AWS::AccountId}'
+
+Outputs:
+  WebACLId:
+    Description: ID of Web ACL
+    Value: !GetAtt WebACL.Id
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-web-acl-id'
+
+  WebACLArn:
+    Description: ARN of Web ACL
+    Value: !GetAtt WebACL.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-web-acl-arn'
+
+  GuardDutyDetectorId:
+    Description: ID of GuardDuty Detector
+    Condition: ShouldEnableGuardDuty
+    Value: !GetAtt GuardDutyDetector.Id
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-guard-duty-id'

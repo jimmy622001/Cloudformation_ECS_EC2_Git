@@ -1,0 +1,35 @@
+# Local parameter values or scripts with actual credentials
+*-secrets.sh
+*-credentials.sh
+*.env
+*.pem
+*.key
+*.tfvars
+env-specific/*.conf
+
+# Local development configuration
+local-config/
+.env*
+
+# AWS CLI temporary files
+.aws/
+
+# Logs
+*.log
+logs/
+
+# Any files that might contain actual parameter values
+parameter-values*.json
+parameter-values*.yaml
+*-params.json
+*-params.yaml
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo

@@ -1,0 +1,28 @@
+name: Checkov Security Scan
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'templates/**'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'templates/**'
+
+jobs:
+  checkov-job:
+    name: Checkov Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        
+      - name: Run Checkov 
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: templates/
+          framework: cloudformation
+          quiet: false
+          soft_fail: false # Change to true if you want the workflow to continue even with failed checks
+          # Add skip checks if needed: skip_check: CKV_AWS_1,CKV_AWS_2

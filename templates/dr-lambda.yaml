@@ -1,0 +1,373 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'DR Lambda Template for ECS-EC2-Jenkins-Git infrastructure'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: ecs-jenkins-github
+    Description: Project name used for resource tagging
+  
+  Environment:
+    Type: String
+    Default: dr
+    Description: Deployment environment
+  
+  PrimaryRegion:
+    Type: String
+    Default: eu-west-2
+    Description: AWS Region where primary resources are deployed
+  
+  DRRegion:
+    Type: String
+    Default: eu-west-1
+    Description: AWS Region for disaster recovery resources
+  
+  ECSClusterName:
+    Type: String
+    Description: Name of the ECS cluster
+  
+  ECSServiceName:
+    Type: String
+    Description: Name of the ECS service
+  
+  ASGName:
+    Type: String
+    Description: Name of the Auto Scaling group for ECS cluster
+  
+  PilotMinCapacity:
+    Type: Number
+    Default: 1
+    Description: Minimum capacity for pilot light configuration
+  
+  PilotMaxCapacity:
+    Type: Number
+    Default: 2
+    Description: Maximum capacity for pilot light configuration
+  
+  PilotDesiredCapacity:
+    Type: Number
+    Default: 1
+    Description: Desired capacity for pilot light configuration
+  
+  FailoverMinCapacity:
+    Type: Number
+    Default: 2
+    Description: Minimum capacity during failover
+  
+  FailoverMaxCapacity:
+    Type: Number
+    Default: 6
+    Description: Maximum capacity during failover
+  
+  FailoverDesiredCapacity:
+    Type: Number
+    Default: 4
+    Description: Desired capacity during failover
+  
+  TestScheduleExpression:
+    Type: String
+    Default: 'cron(5 0 ? * MON#1 *)'
+    Description: Schedule expression for monthly DR test
+  
+  TestDurationMinutes:
+    Type: Number
+    Default: 60
+    Description: Duration of DR test in minutes
+
+Resources:
+  DRLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-${Environment}-dr-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DRLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - ecs:UpdateService
+                  - ecs:DescribeServices
+                  - autoscaling:UpdateAutoScalingGroup
+                  - autoscaling:DescribeAutoScalingGroups
+                  - ec2:DescribeInstances
+                  - ec2:ModifyInstanceAttribute
+                  - ec2:RunInstances
+                  - ec2:DescribeInstanceStatus
+                  - ec2:CreateTags
+                  - events:PutRule
+                  - events:PutTargets
+                  - lambda:GetFunction
+                  - lambda:AddPermission
+                Resource: '*'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  DRLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ProjectName}-${Environment}-dr-scale-up
+      Handler: index.handler
+      Role: !GetAtt DRLambdaRole.Arn
+      Runtime: nodejs18.x
+      Timeout: 300
+      MemorySize: 256
+      Environment:
+        Variables:
+          PRIMARY_REGION: !Ref PrimaryRegion
+          DR_REGION: !Ref DRRegion
+          ECS_CLUSTER: !Ref ECSClusterName
+          ECS_SERVICE: !Ref ECSServiceName
+          ASG_NAME: !Ref ASGName
+          MIN_CAPACITY: !Ref FailoverMinCapacity
+          MAX_CAPACITY: !Ref FailoverMaxCapacity
+          DESIRED_CAPACITY: !Ref FailoverDesiredCapacity
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            const AWS = require('aws-sdk');
+            
+            // Testing mode
+            const isTest = event.test_mode === true;
+            const testDuration = event.test_duration_minutes || 60;
+            
+            // Set region to DR region
+            AWS.config.update({region: process.env.DR_REGION});
+            
+            const ecs = new AWS.ECS();
+            const autoscaling = new AWS.AutoScaling();
+            const ec2 = new AWS.EC2();
+            
+            console.log('Disaster Recovery failover initiated', isTest ? "(TEST MODE)" : "");
+            
+            try {
+              // 1. Scale up the ECS service
+              console.log("Scaling up ECS service " + process.env.ECS_SERVICE + " in cluster " + process.env.ECS_CLUSTER);
+              await ecs.updateService({
+                cluster: process.env.ECS_CLUSTER,
+                service: process.env.ECS_SERVICE,
+                desiredCount: parseInt(process.env.DESIRED_CAPACITY)
+              }).promise();
+              
+              // 2. Update the Auto Scaling Group for capacity and to use on-demand instances
+              console.log("Updating ASG " + process.env.ASG_NAME + " to use on-demand instances");
+              const asgParams = {
+                AutoScalingGroupName: process.env.ASG_NAME,
+                MinSize: parseInt(process.env.MIN_CAPACITY),
+                MaxSize: parseInt(process.env.MAX_CAPACITY),
+                DesiredCapacity: parseInt(process.env.DESIRED_CAPACITY),
+                MixedInstancesPolicy: {
+                  // Switch to 100% on-demand instances during failover
+                  InstancesDistribution: {
+                    OnDemandBaseCapacity: parseInt(process.env.MIN_CAPACITY),
+                    OnDemandPercentageAboveBaseCapacity: 100
+                  }
+                }
+              };
+              
+              await autoscaling.updateAutoScalingGroup(asgParams).promise();
+              
+              console.log('DR environment successfully scaled up for failover');
+              
+              // If this is a test, schedule the cleanup after test duration
+              if (isTest) {
+                console.log("Test mode: Scheduling cleanup after " + testDuration + " minutes");
+                
+                // Create a CloudWatch Events rule to trigger cleanup after test duration
+                const cloudwatchEvents = new AWS.CloudWatchEvents();
+                const lambda = new AWS.Lambda();
+                
+                // Create a one-time rule that will trigger after test duration
+                const ruleName = "dr-test-cleanup-" + Date.now();
+                const scheduleExpression = "cron(" + new Date(Date.now() + testDuration * 60000).getUTCMinutes() + " " + 
+                                          new Date(Date.now() + testDuration * 60000).getUTCHours() + " " + 
+                                          new Date(Date.now() + testDuration * 60000).getUTCDate() + " " + 
+                                          (new Date(Date.now() + testDuration * 60000).getUTCMonth() + 1) + " ? " + 
+                                          new Date(Date.now() + testDuration * 60000).getUTCFullYear() + ")";
+                
+                await cloudwatchEvents.putRule({
+                  Name: ruleName,
+                  ScheduleExpression: scheduleExpression,
+                  State: 'ENABLED'
+                }).promise();
+                
+                // Get the ARN of the cleanup Lambda function
+                const lambdaParams = {
+                  FunctionName: process.env.AWS_LAMBDA_FUNCTION_NAME.replace('dr-scale-up', 'dr-test-cleanup')
+                };
+                
+                const cleanupLambda = await lambda.getFunction(lambdaParams).promise();
+                
+                // Set the cleanup Lambda as the target for the rule
+                await cloudwatchEvents.putTargets({
+                  Rule: ruleName,
+                  Targets: [
+                    {
+                      Id: 'CleanupTarget',
+                      Arn: cleanupLambda.Configuration.FunctionArn
+                    }
+                  ]
+                }).promise();
+                
+                // Add permission for the rule to invoke the cleanup Lambda
+                await lambda.addPermission({
+                  FunctionName: cleanupLambda.Configuration.FunctionName,
+                  StatementId: "AllowExecutionFromCloudWatch-" + Date.now(),
+                  Action: 'lambda:InvokeFunction',
+                  Principal: 'events.amazonaws.com',
+                  SourceArn: "arn:aws:events:" + process.env.DR_REGION + ":" + process.env.AWS_ACCOUNT_ID + ":rule/" + ruleName
+                }).promise();
+              }
+              
+              return {
+                statusCode: 200,
+                body: JSON.stringify({
+                  message: "DR failover completed successfully" + (isTest ? " (TEST MODE)" : ""),
+                  timestamp: new Date().toISOString()
+                })
+              };
+            } catch (error) {
+              console.error('Error during DR failover:', error);
+              throw error;
+            }
+          };
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  DRTestCleanupFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ProjectName}-${Environment}-dr-test-cleanup
+      Handler: index.handler
+      Role: !GetAtt DRLambdaRole.Arn
+      Runtime: nodejs18.x
+      Timeout: 300
+      MemorySize: 256
+      Environment:
+        Variables:
+          DR_REGION: !Ref DRRegion
+          ECS_CLUSTER: !Ref ECSClusterName
+          ECS_SERVICE: !Ref ECSServiceName
+          ASG_NAME: !Ref ASGName
+          PILOT_MIN_CAPACITY: !Ref PilotMinCapacity
+          PILOT_MAX_CAPACITY: !Ref PilotMaxCapacity
+          PILOT_DESIRED_CAPACITY: !Ref PilotDesiredCapacity
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            const AWS = require('aws-sdk');
+            
+            // Set region to DR region
+            AWS.config.update({region: process.env.DR_REGION});
+            
+            const ecs = new AWS.ECS();
+            const autoscaling = new AWS.AutoScaling();
+            
+            console.log('DR test cleanup initiated - restoring pilot light configuration');
+            
+            try {
+              // 1. Scale down the ECS service to pilot light levels
+              console.log("Scaling down ECS service " + process.env.ECS_SERVICE + " to pilot light levels");
+              await ecs.updateService({
+                cluster: process.env.ECS_CLUSTER,
+                service: process.env.ECS_SERVICE,
+                desiredCount: parseInt(process.env.PILOT_DESIRED_CAPACITY)
+              }).promise();
+              
+              // 2. Update the Auto Scaling Group back to pilot light configuration with spot instances
+              console.log("Updating ASG " + process.env.ASG_NAME + " back to pilot light configuration");
+              const asgParams = {
+                AutoScalingGroupName: process.env.ASG_NAME,
+                MinSize: parseInt(process.env.PILOT_MIN_CAPACITY),
+                MaxSize: parseInt(process.env.PILOT_MAX_CAPACITY),
+                DesiredCapacity: parseInt(process.env.PILOT_DESIRED_CAPACITY),
+                MixedInstancesPolicy: {
+                  // Switch back to mostly spot instances for cost efficiency
+                  InstancesDistribution: {
+                    OnDemandBaseCapacity: 0,
+                    OnDemandPercentageAboveBaseCapacity: 0  // Use 100% spot instances for pilot light
+                  }
+                }
+              };
+              
+              await autoscaling.updateAutoScalingGroup(asgParams).promise();
+              
+              console.log('DR environment successfully restored to pilot light configuration');
+              
+              return {
+                statusCode: 200,
+                body: JSON.stringify({
+                  message: 'DR test cleanup completed successfully',
+                  timestamp: new Date().toISOString()
+                })
+              };
+            } catch (error) {
+              console.error('Error during DR test cleanup:', error);
+              throw error;
+            }
+          };
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Monthly DR test schedule
+  MonthlyDRTestRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub ${ProjectName}-${Environment}-monthly-dr-test
+      Description: Schedule monthly DR failover test
+      ScheduleExpression: !Ref TestScheduleExpression
+      State: ENABLED
+      Targets:
+        - Id: DRTestTarget
+          Arn: !GetAtt DRLambdaFunction.Arn
+          Input: !Sub |
+            {
+              "test_mode": true,
+              "test_duration_minutes": ${TestDurationMinutes}
+            }
+
+  # Permission for CloudWatch Events to invoke the Lambda
+  DRTestPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DRLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt MonthlyDRTestRule.Arn
+
+Outputs:
+  LambdaArn:
+    Description: DR Lambda Function ARN
+    Value: !GetAtt DRLambdaFunction.Arn
+    
+  LambdaName:
+    Description: DR Lambda Function Name
+    Value: !Ref DRLambdaFunction
+    
+  CleanupLambdaArn:
+    Description: DR Cleanup Lambda Function ARN
+    Value: !GetAtt DRTestCleanupFunction.Arn

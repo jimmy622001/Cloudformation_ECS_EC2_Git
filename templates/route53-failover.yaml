@@ -1,0 +1,237 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Route53 Failover Template for ECS-EC2-Jenkins-Git infrastructure'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: ecs-jenkins-github
+    Description: Project name used for resource tagging
+  
+  Environment:
+    Type: String
+    Default: prod
+    Description: Deployment environment
+  
+  DomainName:
+    Type: String
+    Description: Domain name for the application
+    Default: example.com
+  
+  PrimaryEndpoint:
+    Type: String
+    Description: DNS name of the primary endpoint (ALB DNS name)
+  
+  PrimaryZoneId:
+    Type: String
+    Description: Hosted zone ID of the primary endpoint (ALB)
+  
+  SecondaryEndpoint:
+    Type: String
+    Description: DNS name of the secondary (DR) endpoint (ALB DNS name)
+  
+  SecondaryZoneId:
+    Type: String
+    Description: Hosted zone ID of the secondary endpoint (ALB)
+  
+  HealthCheckPath:
+    Type: String
+    Default: /health
+    Description: Path to check for health of endpoints
+  
+  Route53HostedZoneId:
+    Type: String
+    Description: ID of the Route53 hosted zone for the domain
+    Default: ''
+  
+  CreateHostedZone:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Whether to create a new hosted zone
+  
+  LambdaArn:
+    Type: String
+    Description: ARN of the DR Lambda function to invoke on failover
+  
+  LambdaName:
+    Type: String
+    Description: Name of the DR Lambda function
+
+Conditions:
+  ShouldCreateHostedZone: !Equals [!Ref CreateHostedZone, 'true']
+  HasExistingHostedZone: !Not [!Equals [!Ref Route53HostedZoneId, '']]
+
+Resources:
+  # Create hosted zone if needed
+  HostedZone:
+    Type: AWS::Route53::HostedZone
+    Condition: ShouldCreateHostedZone
+    Properties:
+      Name: !Ref DomainName
+      HostedZoneConfig:
+        Comment: !Sub Hosted zone for ${ProjectName} ${Environment}
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Health check for primary region
+  PrimaryHealthCheck:
+    Type: AWS::Route53::HealthCheck
+    Properties:
+      HealthCheckConfig:
+        Port: 443
+        Type: HTTPS
+        ResourcePath: !Ref HealthCheckPath
+        FullyQualifiedDomainName: !Ref PrimaryEndpoint
+        RequestInterval: 30
+        FailureThreshold: 3
+        MeasureLatency: true
+      HealthCheckTags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-${Environment}-primary-health
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # DNS record for main domain with failover routing policy
+  MainDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !If [ShouldCreateHostedZone, !Ref HostedZone, !Ref Route53HostedZoneId]
+      Name: !Sub www.${DomainName}.
+      Type: A
+      SetIdentifier: primary
+      Failover: PRIMARY
+      HealthCheckId: !Ref PrimaryHealthCheck
+      AliasTarget:
+        DNSName: !Ref PrimaryEndpoint
+        HostedZoneId: !Ref PrimaryZoneId
+        EvaluateTargetHealth: true
+
+  # Secondary (DR) record
+  SecondaryDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !If [ShouldCreateHostedZone, !Ref HostedZone, !Ref Route53HostedZoneId]
+      Name: !Sub www.${DomainName}.
+      Type: A
+      SetIdentifier: secondary
+      Failover: SECONDARY
+      AliasTarget:
+        DNSName: !Ref SecondaryEndpoint
+        HostedZoneId: !Ref SecondaryZoneId
+        EvaluateTargetHealth: true
+
+  # Apex domain record - primary
+  ApexPrimaryDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !If [ShouldCreateHostedZone, !Ref HostedZone, !Ref Route53HostedZoneId]
+      Name: !Sub ${DomainName}.
+      Type: A
+      SetIdentifier: apex-primary
+      Failover: PRIMARY
+      HealthCheckId: !Ref PrimaryHealthCheck
+      AliasTarget:
+        DNSName: !Ref PrimaryEndpoint
+        HostedZoneId: !Ref PrimaryZoneId
+        EvaluateTargetHealth: true
+
+  # Apex domain record - secondary
+  ApexSecondaryDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !If [ShouldCreateHostedZone, !Ref HostedZone, !Ref Route53HostedZoneId]
+      Name: !Sub ${DomainName}.
+      Type: A
+      SetIdentifier: apex-secondary
+      Failover: SECONDARY
+      AliasTarget:
+        DNSName: !Ref SecondaryEndpoint
+        HostedZoneId: !Ref SecondaryZoneId
+        EvaluateTargetHealth: true
+
+  # CloudWatch alarm for health check
+  HealthCheckAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ProjectName}-${Environment}-health-check-alarm
+      AlarmDescription: !Sub Alarm when health check for ${DomainName} fails
+      Namespace: AWS/Route53
+      MetricName: HealthCheckStatus
+      Dimensions:
+        - Name: HealthCheckId
+          Value: !Ref PrimaryHealthCheck
+      Statistic: Minimum
+      Period: 60
+      EvaluationPeriods: 3
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !Ref HealthAlarmSNSTopic
+        - !Ref HealthCheckEventRule
+      OKActions:
+        - !Ref HealthAlarmSNSTopic
+
+  # Event rule to trigger DR Lambda when health check fails
+  HealthCheckEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub ${ProjectName}-${Environment}-health-check-rule
+      Description: Rule to invoke DR Lambda function when primary health check fails
+      EventPattern:
+        source:
+          - aws.route53
+        detail-type:
+          - Route 53 Health Check State Change
+        detail:
+          healthCheckId:
+            - !Ref PrimaryHealthCheck
+          state:
+            - ALARM
+      State: ENABLED
+      Targets:
+        - Id: DRLambdaTarget
+          Arn: !Ref LambdaArn
+
+  # Permission for CloudWatch Events to invoke Lambda
+  LambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LambdaName
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt HealthCheckEventRule.Arn
+
+  # SNS Topic for health alarms
+  HealthAlarmSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Sub ${ProjectName}-${Environment}-health-alarms
+      TopicName: !Sub ${ProjectName}-${Environment}-health-alarms
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  HealthCheckId:
+    Description: Route53 Health Check ID
+    Value: !Ref PrimaryHealthCheck
+  
+  DNSName:
+    Description: Main DNS record name
+    Value: !Sub www.${DomainName}
+  
+  HostedZoneId:
+    Description: Hosted Zone ID
+    Value: !If [ShouldCreateHostedZone, !Ref HostedZone, !Ref Route53HostedZoneId]
+  
+  HealthAlarmTopicArn:
+    Description: Health Alarm SNS Topic ARN
+    Value: !Ref HealthAlarmSNSTopic
