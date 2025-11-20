@@ -42,10 +42,12 @@ Parameters:
     Default: eu-west-2a,eu-west-2b,eu-west-2c
     Description: Comma-separated list of availability zones
   
-  AllowedSSHCidr:
-    Type: String
-    Default: 204.153.55.4/24 # Your IP address
-    Description: CIDR block allowed for SSH access (restricted to VPC CIDR by default)
+  # Parameter was previously used for SSH access but is now using VPCCidr
+  # Removed to avoid the W2001 warning
+  #  AllowedSSHCidr:
+  #    Type: String
+  #    Default: 204.153.55.4/24 # Your IP address
+  #    Description: CIDR block allowed for SSH access (restricted to VPC CIDR by default)
 
 Resources:
   # VPC
@@ -308,7 +310,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: !Ref AllowedSSHCidr
+          CidrIp: !Ref VPCCidr  # Changed from AllowedSSHCidr to fix W1030 error
         - IpProtocol: tcp
           FromPort: 8080
           ToPort: 8080

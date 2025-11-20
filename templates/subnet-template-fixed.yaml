@@ -44,190 +44,16 @@ Parameters:
     Description: Comma-separated list of NAT Gateway IDs for route tables
     Default: ''
 
+Conditions:
+  HasSubnet2: !Not [!Equals [!Select [1, !Split [",", !Ref SubnetCidrs]], ""]]
+  HasSubnet3: !Not [!Equals [!Select [2, !Split [",", !Ref SubnetCidrs]], ""]]
+  IsPublicSubnet: !Equals [!Ref SubnetType, "Public"]
+  IsPrivateSubnetWithNat: !And
+    - !Not [!Equals [!Ref SubnetType, "Public"]]
+    - !Not [!Equals [!Ref NatGatewayIds, ""]]
+  CreateNatGateway: !Equals [!Ref CreateNatGateway, "true"]
+
 Resources:
-  # KMS Key for Lambda
-  SubnetLambdaKMSKey:
-    Type: AWS::KMS::Key
-    Properties:
-      Description: !Sub KMS key for ${ProjectName}-${Environment} subnet Lambda encryption
-      EnableKeyRotation: true
-      KeyPolicy:
-        Version: '2012-10-17'
-        Statement:
-          - Sid: Enable IAM User Permissions
-            Effect: Allow
-            Principal:
-              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
-            Action:
-              - kms:Create*
-              - kms:Describe*
-              - kms:Enable*
-              - kms:List*
-              - kms:Put*
-              - kms:Update*
-              - kms:Revoke*
-              - kms:Disable*
-              - kms:Get*
-              - kms:Delete*
-              - kms:ScheduleKeyDeletion
-              - kms:CancelKeyDeletion
-            Resource: '*'
-          - Sid: Allow Lambda to use the key
-            Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action:
-              - kms:Encrypt
-              - kms:Decrypt
-              - kms:GenerateDataKey*
-            Resource: '*'
-      Tags:
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: Environment
-          Value: !Ref Environment
-  
-  # KMS Key Alias
-  SubnetLambdaKMSKeyAlias:
-    Type: AWS::KMS::Alias
-    Properties:
-      AliasName: !Sub alias/${ProjectName}-${Environment}-subnet-lambda-key
-      TargetKeyId: !Ref SubnetLambdaKMSKey
-  
-  # SNS Topic for Dead Letter Queue
-  SubnetLambdaDeadLetterTopic:
-    Type: AWS::SNS::Topic
-    Properties:
-      DisplayName: !Sub ${ProjectName}-${Environment}-subnet-lambda-dlq
-      TopicName: !Sub ${ProjectName}-${Environment}-subnet-lambda-dlq
-      KmsMasterKeyId: !Ref SubnetLambdaKMSKey
-      Tags:
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: Environment
-          Value: !Ref Environment
-  
-  # Lambda function to parse list parameters
-  ListParserFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      Handler: index.handler
-      Runtime: python3.12
-      Role: !GetAtt ListParserFunctionRole.Arn
-      DeadLetterConfig:
-        TargetArn: !Ref SubnetLambdaDeadLetterTopic
-      KmsKeyArn: !GetAtt SubnetLambdaKMSKey.Arn
-      ReservedConcurrentExecutions: 5
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref SubnetLambdaSecurityGroup
-        SubnetIds: !Split
-          - ','
-          - !ImportValue 
-              !Sub '${ProjectName}-${Environment}-private-subnets'
-      Code:
-        ZipFile: |
-          import json
-          import cfnresponse
-  
-          def handler(event, context):
-              responseData = {}
-  
-              if event['RequestType'] == 'Delete':
-                  cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
-                  return
-  
-              try:
-                  subnets = event['ResourceProperties'].get('SubnetCidrs', '').split(',')
-                  azs = event['ResourceProperties'].get('AvailabilityZones', '').split(',')
-                  nat_gateways = event['ResourceProperties'].get('NatGatewayIds', '')
-  
-                  if nat_gateways:
-                      nat_gateways = nat_gateways.split(',')
-  
-                  # Create mapping
-                  mapping = []
-  
-                  for i in range(len(subnets)):
-                      item = {}
-                      item['SubnetCidr'] = subnets[i] if i < len(subnets) else ''
-                      item['AZ'] = azs[i % len(azs)] if azs else ''
-                      item['Index'] = str(i)
-  
-                      if nat_gateways and i < len(nat_gateways):
-                          item['NatGatewayId'] = nat_gateways[i]
-  
-                      mapping.append(item)
-  
-                  responseData['Mapping'] = mapping
-                  cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
-              except Exception as e:
-                  responseData['Error'] = str(e)
-                  cfnresponse.send(event, context, cfnresponse.FAILED, responseData)
-      Timeout: 30
-
-  # Security group for Lambda functions in VPC
-  SubnetLambdaSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security group for subnet Lambda function
-      VpcId: !ImportValue 
-        !Sub ${ProjectName}-${Environment}-vpc-id
-      SecurityGroupEgress:
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-          Description: HTTPS egress for AWS API access
-      Tags:
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: Environment
-          Value: !Ref Environment
-  
-  ListParserFunctionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-      Policies:
-        - PolicyName: VPCAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - ec2:DescribeNetworkInterfaces
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - ec2:CreateNetworkInterface
-                Resource:
-                  - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:subnet/*'
-                  - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/*'
-                  - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*'
-              - Effect: Allow
-                Action:
-                  - ec2:DeleteNetworkInterface
-                Resource:
-                  - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*'
-
-  # Custom resource to process list parameters
-  SubnetMapping:
-    Type: Custom::SubnetMapping
-    Properties:
-      ServiceToken: !GetAtt ListParserFunction.Arn
-      SubnetCidrs: !Ref SubnetCidrs
-      AvailabilityZones: !Ref AvailabilityZones
-      NatGatewayIds: !Ref NatGatewayIds
-
   # Create Subnets
   Subnet:
     Type: AWS::EC2::Subnet
@@ -361,15 +187,6 @@ Resources:
     Properties:
       SubnetId: !Ref Subnet3
       RouteTableId: !Ref RouteTable
-
-Conditions:
-  HasSubnet2: !Not [!Equals [!Select [1, !Split [",", !Ref SubnetCidrs]], ""]]
-  HasSubnet3: !Not [!Equals [!Select [2, !Split [",", !Ref SubnetCidrs]], ""]]
-  IsPublicSubnet: !Equals [!Ref SubnetType, "Public"]
-  IsPrivateSubnetWithNat: !And
-    - !Not [!Equals [!Ref SubnetType, "Public"]]
-    - !Not [!Equals [!Ref NatGatewayIds, ""]]
-  CreateNatGateway: !Equals [!Ref CreateNatGateway, "true"]
 
 Outputs:
   SubnetIds:

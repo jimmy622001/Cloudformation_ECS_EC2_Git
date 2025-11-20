@@ -110,18 +110,19 @@ Parameters:
     Type: String
     Description: ID of the Route53 hosted zone for the domain
   
-  DBEngine:
-    Type: String
-    Default: postgres
-    AllowedValues:
-      - postgres
-      - mysql
-    Description: Database engine
-  
-  DBEngineVersion:
-    Type: String
-    Default: 15.4
-    Description: Database engine version
+  # Removing unused parameters identified by cfn-lint
+  #  DBEngine:
+  #    Type: String
+  #    Default: postgres
+  #    AllowedValues:
+  #      - postgres
+  #      - mysql
+  #    Description: Database engine
+  #  
+  #  DBEngineVersion:
+  #    Type: String
+  #    Default: 15.4
+  #    Description: Database engine version
   
   DBInstanceClass:
     Type: String
@@ -161,7 +162,8 @@ Resources:
         DatabaseSubnetCidrs: !Join [',', !Ref DatabaseSubnetCidrs]
         CacheSubnetCidrs: !Join [',', !Ref CacheSubnetCidrs]
         AvailabilityZones: !Join [',', [!Sub '${AWSRegion}a', !Sub '${AWSRegion}b', !Sub '${AWSRegion}c']]
-        AllowedSSHCidr: 0.0.0.0/0
+        # Removed AllowedSSHCidr reference because it's been removed from network.yaml
+                # AllowedSSHCidr: 0.0.0.0/0
 
   IAMStack:
     Type: AWS::CloudFormation::Stack

@@ -37,7 +37,8 @@ Resources:
         DatabaseSubnetCidrs: 10.0.21.0/24,10.0.22.0/24,10.0.23.0/24
         CacheSubnetCidrs: 10.0.31.0/24,10.0.32.0/24,10.0.33.0/24
         AvailabilityZones: !Join [',', [!Sub '${AWSRegion}a', !Sub '${AWSRegion}b', !Sub '${AWSRegion}c']]
-        AllowedSSHCidr: '{{resolve:ssm:/ecs-jenkins-github/network/allowed-ssh-cidr:1}}'
+        # Removed AllowedSSHCidr reference because it's been removed from network.yaml
+                # AllowedSSHCidr: '{{resolve:ssm:/ecs-jenkins-github/network/allowed-ssh-cidr:1}}'
 
   IAMStack:
     Type: AWS::CloudFormation::Stack
@@ -71,7 +72,7 @@ Resources:
       Parameters:
         ProjectName: !Ref ProjectName
         Environment: !Ref Environment
-        VpcId: !GetAtt NetworkStack.Outputs.VpcId
+        # VpcId parameter removed as it's not used in database.yaml
         DatabaseSubnetIds: !GetAtt NetworkStack.Outputs.DatabaseSubnets
         DBSecurityGroupId: !GetAtt NetworkStack.Outputs.DBSecurityGroup
         DBEngine: postgres
@@ -82,7 +83,7 @@ Resources:
         DBName: appdb
         DBUsername: '{{resolve:ssm:/ecs-jenkins-github/db/username:1}}'
         DBPort: 5432
-        DBMultiAZ: false
+        # DBMultiAZ parameter removed as it's now always true in database.yaml
         EnablePerformanceInsights: true
 
   ECSStack:
