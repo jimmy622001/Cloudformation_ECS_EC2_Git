@@ -59,7 +59,7 @@ Parameters:
 
 Conditions:
   ShouldCreateHostedZone: !Equals [!Ref CreateHostedZone, 'true']
-  HasExistingHostedZone: !Not [!Equals [!Ref Route53HostedZoneId, '']]
+  # HasExistingHostedZone condition removed as it's not used
 
 Resources:
   # Create hosted zone if needed
@@ -88,7 +88,7 @@ Resources:
         RequestInterval: 30
         FailureThreshold: 3
         MeasureLatency: true
-      HealthCheckTags:
+      Tags:
         - Key: Name
           Value: !Sub ${ProjectName}-${Environment}-primary-health
         - Key: Project

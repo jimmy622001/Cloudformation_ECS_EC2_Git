@@ -28,7 +28,7 @@ jobs:
         with:
           args: >
             -Dsonar.projectKey=example_cloudformation-poc
-            -Dsonar.organization=example
+            -Dsonar.organization=jimmy622001
             -Dsonar.sources=.
             -Dsonar.exclusions=**/*.bat,**/*.sh
             -Dsonar.cfn.file.suffixes=.yaml,.yml,templates/**/*.yaml,templates/**/*.yml

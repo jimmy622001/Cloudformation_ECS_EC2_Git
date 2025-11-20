@@ -58,7 +58,7 @@ Parameters:
 
 Conditions:
   IsPostgreSQL: !Equals [!Ref DBEngine, 'postgres']
-  IsMultiAZEnabled: !Equals [!Ref MultiAZ, 'true']
+  # IsMultiAZEnabled condition removed as it's not used
 
 Resources:
   # DB Subnet Group

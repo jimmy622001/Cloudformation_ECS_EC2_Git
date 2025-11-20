@@ -70,7 +70,7 @@ Parameters:
     Description: Name of the green target group
   
   JenkinsAMI:
-    Type: String
+    Type: AWS::EC2::Image::Id
     Description: Amazon Linux 2 AMI ID
 
 Conditions:

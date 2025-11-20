@@ -38,11 +38,7 @@ Parameters:
     Type: String
     Description: ARN of ECS task role
   
-  ContainerInsights:
-    Type: String
-    Default: 'true'
-    AllowedValues: ['true', 'false']
-    Description: Enable container insights
+  # ContainerInsights parameter removed as it's hardcoded in the template
   
   InstanceType:
     Type: String
@@ -111,7 +107,7 @@ Parameters:
     Description: ARN of existing ACM certificate
   
   ECSOptimizedAMI:
-    Type: String
+    Type: AWS::EC2::Image::Id
     Description: ECS-optimized Amazon Linux 2 AMI ID
 
 Conditions:
@@ -119,8 +115,7 @@ Conditions:
   ShouldCreateDummyCert: !Equals [!Ref CreateDummyCert, 'true']
   HasCustomCert: !Not [!Equals [!Ref ACMCertificateARN, '']]
   NeedsNewCertificate: !And [!Equals [!Ref CreateDummyCert, 'true'], !Equals [!Ref ACMCertificateARN, '']]
-  IsProd: !Equals [!Ref Environment, 'prod']
-  IsProduction: !Equals [!Ref Environment, 'prod']
+  # IsProd and IsProduction conditions removed as they're not used
 
 Resources:
   # ECS Cluster

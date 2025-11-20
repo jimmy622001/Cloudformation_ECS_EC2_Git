@@ -125,11 +125,11 @@ Resources:
           
           def handler(event, context):
               responseData = {}
-              
+          
               if event['RequestType'] == 'Delete':
                   cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
                   return
-              
+          
               try:
                   subnet_string = event['ResourceProperties']['SubnetString']
                   subnet_list = subnet_string.split(',')
@@ -309,13 +309,13 @@ Resources:
           FromPort: 22
           ToPort: 22
           CidrIp: !Ref AllowedSSHCidr
-- IpProtocol: tcp
-  FromPort: 8080
-  ToPort: 8080
-  CidrIp: 10.0.0.0/8  # Restrict to private network
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 10.0.0.0/8  # Restrict to private network
       SecurityGroupEgress:
         - IpProtocol: -1
-CidrIp: 10.0.0.0/8  # Restrict to private network
+          CidrIp: 10.0.0.0/8  # Restrict to private network
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-jenkins-sg'

@@ -123,7 +123,8 @@ Resources:
           - !Ref SubnetLambdaSecurityGroup
         SubnetIds: !Split
           - ','
-          - !ImportValue '${ProjectName}-${Environment}-private-subnets'
+          - !ImportValue 
+            !Sub '${ProjectName}-${Environment}-private-subnets'
       Code:
         ZipFile: |
           import json
@@ -170,7 +171,8 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Security group for subnet Lambda function
-      VpcId: !ImportValue ${ProjectName}-${Environment}-vpc-id
+      VpcId: !ImportValue 
+        !Sub ${ProjectName}-${Environment}-vpc-id
       SecurityGroupEgress:
         - IpProtocol: tcp
           FromPort: 443

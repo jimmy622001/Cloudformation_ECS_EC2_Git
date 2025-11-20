@@ -33,11 +33,7 @@ Parameters:
     Default: postgres13
     Description: Database parameter group family
 
-  DBMultiAZ:
-    Type: String
-    Default: false
-    AllowedValues: [true, false]
-    Description: Whether to deploy in multiple availability zones
+  # DBMultiAZ parameter removed as we force MultiAZ to true
 
 Resources:
   # Generate a secret for database credentials 
@@ -111,9 +107,9 @@ Resources:
       DBSubnetGroupDescription: !Sub "Subnet group for ${ProjectName} ${Environment} database"
       SubnetIds:
         # Use CloudFormation parameter references
-        - '{{resolve:ssm:/cloudformation-ecs/${Environment}/network/database-subnet-1:1}}'
-        - '{{resolve:ssm:/cloudformation-ecs/${Environment}/network/database-subnet-2:1}}'
-        - '{{resolve:ssm:/cloudformation-ecs/${Environment}/network/database-subnet-3:1}}'
+        - !Sub '{{resolve:ssm:/cloudformation-ecs/${Environment}/network/database-subnet-1:1}}'
+        - !Sub '{{resolve:ssm:/cloudformation-ecs/${Environment}/network/database-subnet-2:1}}'
+        - !Sub '{{resolve:ssm:/cloudformation-ecs/${Environment}/network/database-subnet-3:1}}'
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -125,12 +121,12 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: !Sub "Security group for ${ProjectName} ${Environment} database"
-      VpcId: '{{resolve:ssm:/cloudformation-ecs/${Environment}/network/vpc-id:1}}'
+      VpcId: !Sub '{{resolve:ssm:/cloudformation-ecs/${Environment}/network/vpc-id:1}}'
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 5432
           ToPort: 5432
-          SourceSecurityGroupId: '{{resolve:ssm:/cloudformation-ecs/${Environment}/security/app-security-group-id:1}}'
+          SourceSecurityGroupId: !Sub '{{resolve:ssm:/cloudformation-ecs/${Environment}/security/app-security-group-id:1}}'
           Description: "Allow access from application"
       Tags:
         - Key: Name
@@ -213,7 +209,7 @@ Resources:
     Type: AWS::SSM::Parameter
     Properties:
       Name: !Sub "/cloudformation-ecs/${Environment}/database/connection-string"
-      Type: "SecureString"
+      Type: "String"
       Value: !Sub "postgresql://{{resolve:secretsmanager:${DatabaseSecret}:SecretString:username}}:{{resolve:secretsmanager:${DatabaseSecret}:SecretString:password}}@${RDSInstance.Endpoint.Address}:${RDSInstance.Endpoint.Port}/postgres"
       Description: !Sub "PostgreSQL connection string for ${Environment} environment"
       Tags:

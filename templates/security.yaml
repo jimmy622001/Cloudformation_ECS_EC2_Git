@@ -10,9 +10,7 @@ Parameters:
     Type: String
     Description: Deployment environment
   
-  VpcId:
-    Type: String
-    Description: VPC ID
+  # VpcId parameter removed as it's not used
   
   AlbArn:
     Type: String

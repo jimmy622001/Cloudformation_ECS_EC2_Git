@@ -14,13 +14,9 @@ Parameters:
     Type: String
     Description: VPC ID
   
-  PrivateSubnets:
-    Type: String
-    Description: Comma-separated list of private subnet IDs
+  # PrivateSubnets parameter removed as it's not used
   
-  PublicSubnets:
-    Type: String
-    Description: Comma-separated list of public subnet IDs
+  # PublicSubnets parameter removed as it's not used
   
   ECSSecurityGroup:
     Type: String

@@ -61,11 +61,7 @@ Parameters:
     Default: 5432
     Description: Port for the database
   
-  DBMultiAZ:
-    Type: String
-    Default: 'false'
-    AllowedValues: ['true', 'false']
-    Description: Enable multi-AZ for database
+  # DBMultiAZ parameter removed as we force MultiAZ to true
   
   EnablePerformanceInsights:
     Type: String
@@ -392,7 +388,8 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Security group for RDS SSL enforcer Lambda function
-      VpcId: !ImportValue '${ProjectName}-${Environment}-vpc-id'
+      VpcId: !ImportValue 
+        !Sub '${ProjectName}-${Environment}-vpc-id'
       SecurityGroupEgress:
         - IpProtocol: tcp
           FromPort: 443
@@ -422,7 +419,8 @@ Resources:
           - !Ref RDSSSLEnforcerSecurityGroup
         SubnetIds: !Split 
           - ','
-          - !ImportValue '${ProjectName}-${Environment}-private-subnets'
+          - !ImportValue 
+            !Sub '${ProjectName}-${Environment}-private-subnets'
       Code:
         ZipFile: |
           import json
