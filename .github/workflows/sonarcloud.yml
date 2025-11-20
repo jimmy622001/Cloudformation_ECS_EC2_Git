@@ -1,4 +1,6 @@
 name: SonarCloud Analysis
+
+# This workflow analyzes your CloudFormation templates with SonarCloud
 on:
   push:
     branches: [main, dev]
