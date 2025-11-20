@@ -20,14 +20,13 @@ configure_rules:
   E2520: # IAM Policy wildcard without IAM constraints
     strict: true
 
-# Set a limit for the number of outputs
-limit_outputs: 60
-
-# Set a limit for the number of parameters
-limit_parameters: 60
-
-# Set a limit for the number of resources
-limit_resources: 200
-
-# Set a limit for the number of mappings
-limit_mappings: 10
+# Rule configuration for template limits
+rules:
+  E6012: # Output limits
+    number: 60
+  E6010: # Parameter limits
+    number: 60
+  E6011: # Resource limits
+    number: 200
+  E6013: # Mapping limits
+    number: 10
