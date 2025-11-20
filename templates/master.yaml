@@ -15,7 +15,7 @@ Parameters:
   
   AWSRegion:
     Type: String
-    Default: eu-west-2
+    Default: eu-west-1
     Description: AWS Region to deploy resources
 
   KeyPairName:
