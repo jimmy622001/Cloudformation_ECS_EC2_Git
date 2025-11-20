@@ -244,7 +244,7 @@
             {
               "level": "note",
               "message": {
-                "text": "Manual SARIF file created for SonarQube"
+                "text": "Manual SARIF diagnostic file created"
               }
             }
           ]

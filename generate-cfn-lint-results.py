@@ -5,7 +5,7 @@ import os
 
 def create_sarif_file():
     templates = glob.glob("templates/*.yaml")
-    
+
     sarif = {
         "version": "2.1.0",
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
