@@ -1,6 +1,6 @@
 # CI/CD Pipeline for CloudFormation Templates
 
-This document outlines the CI/CD pipeline setup for deploying CloudFormation templates.
+This document outlines the CI/CD pipeline setup for deploying CloudFormation templates using GitHub Actions.
 
 ## Architecture Overview
 
@@ -8,11 +8,7 @@ This document outlines the CI/CD pipeline setup for deploying CloudFormation tem
 graph TD
     A[GitHub Repository] -->|Push/PR| B[GitHub Actions: Validate]
     B -->|Security Scanning| C[GitHub Actions: Deploy]
-    A -->|GitHub Connection| D[AWS CodePipeline]
-    D -->|Source| E[AWS CodeBuild: Validate]
-    E -->|Create| F[CloudFormation Change Set]
-    F -->|Execute| G[CloudFormation Stack]
-    C -->|Deploy via AWS API| G
+    C -->|Deploy via AWS API| G[CloudFormation Stack]
 ```
 
 ## CI/CD Components
@@ -32,17 +28,9 @@ graph TD
    - Advanced security scanning with SARIF reports for GitHub Security tab
    - Packages and deploys the CloudFormation templates
 
-### AWS-Based Pipeline
-
-1. **AWS CodePipeline** (`templates/aws-pipeline.yaml`)
-   - Source stage connects to GitHub repository
-   - Build stage performs template validation
-   - CreateChangeSet stage generates changes for review
-   - Deploy stage applies changes to AWS environment
-
 ## Setup Instructions
 
-### 1. Setting up GitHub Actions OIDC Role
+### Setting up GitHub Actions OIDC Role
 
 The GitHub Actions workflows use OIDC authentication to securely assume an AWS IAM role:
 
@@ -55,18 +43,6 @@ setup-github-actions-role.bat
 After running the script:
 1. Copy the Role ARN from the generated file
 2. Add the ARN as a GitHub secret named `AWS_ROLE_TO_ASSUME`
-
-### 2. Setting up AWS CodePipeline (Optional)
-
-This provides a second deployment method using AWS services:
-
-```bash
-# Edit the variables in setup-aws-pipeline.bat
-# Then run:
-setup-aws-pipeline.bat
-```
-
-You'll need to complete the GitHub connection by following the instructions provided during setup.
 
 ## Deployment Strategy
 
@@ -98,9 +74,8 @@ The CI/CD pipeline includes several security measures:
 
 To customize the pipeline for your needs:
 
-1. Edit the parameter files (`dev-parameters.json`, `prod-parameters.json`)
+1. Edit the parameter files (`dev-parameters.json`, `prod-parameters.json`, `dr-parameters.json`)
 2. Modify the GitHub Actions workflows in `.github/workflows/`
-3. Update the AWS CodePipeline template in `templates/aws-pipeline.yaml`
 
 ## Disaster Recovery
 
@@ -114,4 +89,4 @@ In case of failed deployments:
 
 - [AWS CloudFormation Documentation](https://docs.aws.amazon.com/cloudformation/)
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
-- [AWS CodePipeline Documentation](https://docs.aws.amazon.com/codepipeline/)
+- [GitHub OIDC with AWS](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)

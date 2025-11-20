@@ -1,124 +1,37 @@
-name: CloudFormation Deployment
+name: Deploy CloudFormation Stack
 
 on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'dev'
-        type: choice
-        options:
-          - dev
-          - test
-          - prod
-      confirm_deploy:
-        description: 'Type "DEPLOY" to confirm deployment'
-        required: true
   push:
     branches:
       - main
+      - master
+      - production
       - dev
-      - dr-pilot-light
-    paths:
-      - 'templates/**'
-      - '*.json'
 
 jobs:
   deploy:
-    name: Deploy CloudFormation Stack
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-      
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-west-2
-      
-      - name: Determine environment
-        id: env
-        run: |
-          # For workflow_dispatch, use the input value
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "ENV=${{ github.event.inputs.environment }}" >> $GITHUB_ENV
-            echo "PARAM_FILE=${{ github.event.inputs.environment }}-parameters.json" >> $GITHUB_ENV
-            
-            # Validate confirmation for production
-            if [[ "${{ github.event.inputs.environment }}" == "prod" && "${{ github.event.inputs.confirm_deploy }}" != "DEPLOY" ]]; then
-              echo "ERROR: Production deployment requires confirmation. Please type DEPLOY to confirm."
-              exit 1
-            fi
-          else
-            # For push events, use the branch
-            if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-              echo "ENV=prod" >> $GITHUB_ENV
-              echo "PARAM_FILE=prod-parameters.json" >> $GITHUB_ENV
-            elif [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
-              echo "ENV=dev" >> $GITHUB_ENV
-              echo "PARAM_FILE=dev-parameters.json" >> $GITHUB_ENV
-            elif [[ "${{ github.ref }}" == "refs/heads/dr-pilot-light" ]]; then
-              echo "ENV=dr" >> $GITHUB_ENV
-              echo "PARAM_FILE=dr-parameters.json" >> $GITHUB_ENV
-            else
-              echo "ENV=dev" >> $GITHUB_ENV
-              echo "PARAM_FILE=dev-parameters.json" >> $GITHUB_ENV
-            fi
-          fi
-      
-      - name: Package CloudFormation Templates
-        run: |
-          # Create S3 bucket for templates if it doesn't exist
-          TEMPLATE_BUCKET=cfn-templates-${{ github.repository_owner }}-${{ env.ENV }}-${{ github.run_id }}
-          aws s3 mb s3://$TEMPLATE_BUCKET --region eu-west-2 || true
-          
-          # Package the template
-          aws cloudformation package \
-            --template-file templates/master.yaml \
-            --s3-bucket $TEMPLATE_BUCKET \
-            --s3-prefix templates \
-            --output-template-file packaged-template.yaml
-      
-      - name: Deploy CloudFormation Stack
-        run: |
-          STACK_NAME=ecs-jenkins-github-${{ env.ENV }}
-          
-          # Check if stack exists
-          if aws cloudformation describe-stacks --stack-name $STACK_NAME 2>&1 | grep -q "Stack with id $STACK_NAME does not exist"; then
-            # Create new stack
-            aws cloudformation deploy \
-              --template-file packaged-template.yaml \
-              --stack-name $STACK_NAME \
-              --parameter-overrides file://${{ env.PARAM_FILE }} \
-              --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
-              --no-fail-on-empty-changeset
-          else
-            # Update existing stack
-            aws cloudformation deploy \
-              --template-file packaged-template.yaml \
-              --stack-name $STACK_NAME \
-              --parameter-overrides file://${{ env.PARAM_FILE }} \
-              --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
-              --no-fail-on-empty-changeset
-          fi
-      
-      - name: Get CloudFormation Outputs
-        if: success()
-        run: |
-          STACK_NAME=ecs-jenkins-github-${{ env.ENV }}
-          aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs" --output json > stack-outputs.json
-          cat stack-outputs.json
-      
-      - name: Upload Stack Outputs
-        if: success()
-        uses: actions/upload-artifact@v4
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          name: stack-outputs
-          path: stack-outputs.json
+          node-version: '18'
+
+      - name: Deploy CloudFormation stack
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/master" || "${{ github.ref }}" == "refs/heads/production" ]]; then
+            aws cloudformation deploy --template-file templates/main.yml --stack-name production-stack --parameter-overrides Environment=production --capabilities CAPABILITY_IAM
+          else
+            aws cloudformation deploy --template-file templates/main.yml --stack-name dev-stack --parameter-overrides Environment=dev --capabilities CAPABILITY_IAM
+          fi

@@ -31,7 +31,17 @@ The infrastructure is deployed using nested CloudFormation templates to maintain
 
 ## Deployment Instructions
 
-### Option 1: Using AWS Management Console
+### Option 1: Using GitHub Actions (Recommended)
+
+This project is configured to use GitHub Actions for CI/CD (see [docs/CICD.md](docs/CICD.md) for details):
+
+1. Fork this repository to your GitHub account
+2. Set up the required GitHub secrets:
+   - `AWS_ROLE_ARN`: The ARN of the IAM role for GitHub Actions (see `.github/workflows/deploy.yml`)
+3. Push changes to trigger the workflow or manually trigger it from the Actions tab
+4. The workflow will validate and deploy your CloudFormation templates
+
+### Option 2: Using AWS Management Console
 
 1. Upload all templates to an S3 bucket
 2. Navigate to the CloudFormation console
@@ -39,7 +49,7 @@ The infrastructure is deployed using nested CloudFormation templates to maintain
 4. Set the parameters as needed
 5. Review and create the stack
 
-### Option 2: Using AWS CLI
+### Option 3: Using AWS CLI
 
 ```bash
 aws cloudformation create-stack \
@@ -123,19 +133,28 @@ This CloudFormation project was converted from a Terraform project. The main dif
 - Secret values are managed using AWS Secrets Manager and AWS Systems Manager Parameter Store.
 - In production environments, encryption is enabled for all applicable resources.
 
+## Project Structure
+
+The project structure has been organized as follows:
+
+- `/.github/workflows/` - GitHub Actions workflow files for CI/CD
+- `/templates/` - CloudFormation templates
+- `/scripts/` - Utility scripts for template validation and management
+- `/security/` - Security-related scripts and tools
+- `/docs/` - Project documentation files
+- Parameter files (*.json) - Environment-specific parameter files in the root directory
+
 ## Secure Secrets Management
 
-This repository now includes enhanced security features for managing secrets. Please review the following files:
+This repository includes enhanced security features for managing secrets. Please review the following files:
 
-- [SECURE_SECRETS_GUIDE.md](SECURE_SECRETS_GUIDE.md) - Comprehensive guide for secure secrets management
 - [security/setup-aws-secrets.sh](security/setup-aws-secrets.sh) - Script to securely store secrets in AWS Secrets Manager
-- [security/setup-secret-scanning.sh](security/setup-secret-scanning.sh) - Set up local secret scanning tools
-- [security/clean-repo-secrets.sh](security/clean-repo-secrets.sh) - Help clean sensitive data from repository history
+- [docs/PARAMETER_MANAGEMENT.md](docs/PARAMETER_MANAGEMENT.md) - Documentation on parameter management
 
 Make the scripts executable before using them:
 
 ```bash
-chmod +x security/setup-aws-secrets.sh security/clean-repo-secrets.sh security/setup-secret-scanning.sh
+chmod +x security/setup-aws-secrets.sh
 ```
 
-**Important**: If you have found a security issue, please follow the procedure in [SECURE_SECRETS_GUIDE.md](SECURE_SECRETS_GUIDE.md).
+**Important**: If you have found a security issue, please contact the security team.
