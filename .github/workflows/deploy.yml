@@ -27,6 +27,12 @@ jobs:
         with:
           node-version: '18'
 
+      - name: Create required SSM Parameters
+        run: |
+          # Create the required SSM parameters that the templates need
+          aws ssm put-parameter --name "/ecs-jenkins-github/db/username" --value "dbadmin" --type "String" --overwrite
+          aws ssm put-parameter --name "/ecs-jenkins-github/ecs/domain-name" --value "dev.example.com" --type "String" --overwrite
+      
       - name: Deploy CloudFormation stack
         run: |
           if [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/master" || "${{ github.ref }}" == "refs/heads/production" ]]; then

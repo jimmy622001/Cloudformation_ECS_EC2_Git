@@ -81,7 +81,7 @@ Resources:
         DBAllocatedStorage: 20
         DBMaxAllocatedStorage: 100
         DBName: appdb
-        DBUsername: '{{resolve:ssm:/ecs-jenkins-github/db/username:1}}'
+        DBUsername: 'dbadmin'
         DBPort: 5432
         # DBMultiAZ parameter removed as it's now always true in database.yaml
         EnablePerformanceInsights: true
@@ -114,7 +114,7 @@ Resources:
         HealthCheckPath: /
         TaskCPU: 256
         TaskMemory: 512
-        DomainName: '{{resolve:ssm:/ecs-jenkins-github/ecs/domain-name:1}}'
+        DomainName: 'dev.example.com'
         CreateDummyCert: true
         ACMCertificateARN: ''
   
