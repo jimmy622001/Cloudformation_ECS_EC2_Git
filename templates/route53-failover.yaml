@@ -70,11 +70,6 @@ Resources:
       Name: !Ref DomainName
       HostedZoneConfig:
         Comment: !Sub Hosted zone for ${ProjectName} ${Environment}
-      Tags:
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: Environment
-          Value: !Ref Environment
 
   # Health check for primary region
   PrimaryHealthCheck:

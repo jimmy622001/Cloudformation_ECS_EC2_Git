@@ -245,11 +245,6 @@ Resources:
   # RDS DB Instance
   DBInstance:
     Type: AWS::RDS::DBInstance
-    Metadata:
-      checkov:
-        skip:
-          - id: CKV2_AWS_69
-            comment: "SSL encryption is enforced through parameter groups and custom resources. PostgreSQL uses ssl=true and ssl_min_protocol_version=TLSv1.2, MySQL uses require_secure_transport=1. Additionally, we use a custom Lambda that checks and enforces SSL."
     Properties:
       DBInstanceIdentifier: !Sub '${ProjectName}-${Environment}-db'
       Engine: !Ref DBEngine

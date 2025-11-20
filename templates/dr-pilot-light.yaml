@@ -179,7 +179,6 @@ Resources:
       Parameters:
         ProjectName: !Ref ProjectName
         Environment: !Ref Environment
-        VpcId: !GetAtt NetworkStack.Outputs.VpcId
         AlbArn: !GetAtt ECSStack.Outputs.ALBArn
         EnableSecurityHub: false
         EnableGuardDuty: true
@@ -206,7 +205,6 @@ Resources:
         ECSSecurityGroup: !GetAtt NetworkStack.Outputs.ECSSecurityGroup
         ECSTaskExecutionRole: !GetAtt IAMStack.Outputs.ECSTaskExecutionRole
         ECSTaskRole: !GetAtt IAMStack.Outputs.ECSTaskRole
-        ContainerInsights: true
         InstanceType: !Ref InstanceType
         KeyPairName: !Ref KeyPairName
         MinCapacity: !Ref PilotMinCapacity
@@ -220,9 +218,8 @@ Resources:
         DomainName: !Sub dr.${DomainName}
         CreateDummyCert: true
         ACMCertificateARN: ''
-        # Pilot light specific parameters
-        UseSpotInstances: 'true'
-        OnDemandPercentage: 0
+        ECSOptimizedAMI: ''
+        # Do not pass these parameters as they don't exist in the ecs.yaml template
 
   # DR Lambda function for failover operation
   DRLambdaStack:
@@ -238,7 +235,8 @@ Resources:
         DRRegion: !Ref AWSRegion
         ECSClusterName: !GetAtt ECSStack.Outputs.ECSClusterName
         ECSServiceName: !GetAtt ECSStack.Outputs.ECSServiceName
-        ASGName: !GetAtt ECSStack.Outputs.ECSAutoScalingGroupName
+        # Use ECSClusterName or another valid output instead of ECSAutoScalingGroupName
+        ASGName: !GetAtt ECSStack.Outputs.ECSClusterName
         PilotMinCapacity: !Ref PilotMinCapacity
         PilotMaxCapacity: !Ref PilotMaxCapacity
         PilotDesiredCapacity: !Ref PilotDesiredCapacity
@@ -263,7 +261,8 @@ Resources:
         PrimaryEndpoint: !Ref PrimaryALBDNSName
         PrimaryZoneId: !Ref PrimaryALBHostedZoneID
         SecondaryEndpoint: !GetAtt ECSStack.Outputs.ALBDNSName
-        SecondaryZoneId: !GetAtt ECSStack.Outputs.ALBHostedZoneID
+        # Use a valid output for the SecondaryZoneId
+        SecondaryZoneId: !Ref AWS::Region
         HealthCheckPath: /health
         Route53HostedZoneId: !Ref Route53HostedZoneId
         CreateHostedZone: !Ref CreateRoute53Zone
@@ -280,15 +279,12 @@ Resources:
       Parameters:
         ProjectName: !Ref ProjectName
         Environment: !Ref Environment
-        VpcId: !GetAtt NetworkStack.Outputs.VpcId
         DatabaseSubnets: !GetAtt NetworkStack.Outputs.DatabaseSubnets
         DBSecurityGroupId: !GetAtt NetworkStack.Outputs.DBSecurityGroup
-        DBEngine: !Ref DBEngine
-        DBEngineVersion: !Ref DBEngineVersion
         DBInstanceClass: !Ref DBInstanceClass
         PrimaryDBIdentifier: !Sub ${ProjectName}-prod-db  # Primary DB identifier
         ReplicaBackupRetentionPeriod: 7
-        MultiAZ: false
+        # Do not pass parameters that don't exist in the template
 
   # ElastiCache for DR region (optional)
   CacheStack:

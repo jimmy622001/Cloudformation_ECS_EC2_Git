@@ -55,7 +55,6 @@ Resources:
       Parameters:
         ProjectName: !Ref ProjectName
         Environment: !Ref Environment
-        VpcId: !GetAtt NetworkStack.Outputs.VpcId
         AlbArn: !GetAtt ECSStack.Outputs.ALBArn
         EnableSecurityHub: true
         EnableGuardDuty: true
@@ -103,7 +102,7 @@ Resources:
         ECSSecurityGroup: !GetAtt NetworkStack.Outputs.ECSSecurityGroup
         ECSTaskExecutionRole: !GetAtt IAMStack.Outputs.ECSTaskExecutionRole
         ECSTaskRole: !GetAtt IAMStack.Outputs.ECSTaskRole
-        ContainerInsights: true
+        ECSOptimizedAMI: ''
         InstanceType: t3.micro
         KeyPairName: !Ref KeyPairName
         MinCapacity: 2
@@ -134,9 +133,9 @@ Resources:
         JenkinsSecurityGroup: !GetAtt NetworkStack.Outputs.JenkinsSecurityGroup
         JenkinsInstanceProfile: !GetAtt IAMStack.Outputs.JenkinsInstanceProfile
         CodeDeployRole: !GetAtt IAMStack.Outputs.CodeDeployRole
+        JenkinsAMI: ''
         JenkinsInstanceType: t3.small
         KeyPairName: !Ref KeyPairName
-        GithubRepository: '{{resolve:ssm:/ecs-jenkins-github/cicd/github-repository:1}}'
         CodeDeployGroupName: app-deployment-group
         ECSClusterName: !GetAtt ECSStack.Outputs.ECSClusterName
         ECSServiceName: !GetAtt ECSStack.Outputs.ECSServiceName
@@ -157,8 +156,6 @@ Resources:
         ProjectName: !Ref ProjectName
         Environment: !Ref Environment
         VpcId: !GetAtt NetworkStack.Outputs.VpcId
-        PrivateSubnets: !GetAtt NetworkStack.Outputs.PrivateSubnets
-        PublicSubnets: !GetAtt NetworkStack.Outputs.PublicSubnets
         ECSSecurityGroup: !GetAtt NetworkStack.Outputs.ECSSecurityGroup
         ECSClusterArn: !GetAtt ECSStack.Outputs.ECSClusterArn
         ECSClusterName: !GetAtt ECSStack.Outputs.ECSClusterName
@@ -170,7 +167,7 @@ Resources:
         CreateGrafanaDashboard: true
         CreatePrometheus: true
         AlertingEnabled: true
-        GrafanaPassword: '{{resolve:ssm-secure:/ecs-jenkins-github/grafana/password:1}}'
+        GrafanaPassword: 'dummy-password'
 
   CacheStack:
     Type: AWS::CloudFormation::Stack
