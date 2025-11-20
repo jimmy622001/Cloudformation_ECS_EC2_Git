@@ -12,8 +12,8 @@ on:
   pull_request:
     branches:
       - main
-      - master
-      - develop
+      - dr-pilot-light
+      - dev
     paths:
       - 'templates/**'
       - '*.json'
