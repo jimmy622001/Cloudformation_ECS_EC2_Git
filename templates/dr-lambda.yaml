@@ -395,7 +395,7 @@ Resources:
           - !Ref DRLambdaSecurityGroup
         SubnetIds: !Split
           - ','
-          - !ImportValue '${ProjectName}-${Environment}-private-subnets'
+          - Fn::ImportValue: !Sub '${ProjectName}-${Environment}-private-subnets'
       Environment:
         Variables:
           DR_REGION: !Ref DRRegion

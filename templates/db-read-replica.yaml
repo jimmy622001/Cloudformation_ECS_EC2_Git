@@ -48,13 +48,7 @@ Parameters:
     MinValue: 0
     MaxValue: 35
   
-  MultiAZ:
-    Type: String
-    Default: 'false'
-    AllowedValues:
-      - 'true'
-      - 'false'
-    Description: Enable Multi-AZ deployment for DR read replica
+  # MultiAZ parameter removed as it was not used - Read Replica uses hardcoded MultiAZ: true
 
 Conditions:
   IsPostgreSQL: !Equals [!Ref DBEngine, 'postgres']

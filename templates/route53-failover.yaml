@@ -88,7 +88,7 @@ Resources:
         RequestInterval: 30
         FailureThreshold: 3
         MeasureLatency: true
-      Tags:
+      HealthCheckTags:
         - Key: Name
           Value: !Sub ${ProjectName}-${Environment}-primary-health
         - Key: Project
@@ -110,7 +110,7 @@ Resources:
         DNSName: !Ref PrimaryEndpoint
         HostedZoneId: !Ref PrimaryZoneId
         EvaluateTargetHealth: true
-
+  
   # Secondary (DR) record
   SecondaryDNSRecord:
     Type: AWS::Route53::RecordSet

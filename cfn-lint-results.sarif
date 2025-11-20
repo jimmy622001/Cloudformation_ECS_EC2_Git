@@ -1,23 +1,255 @@
 {
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
   "version": "2.1.0",
-  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
   "runs": [
     {
       "tool": {
         "driver": {
           "name": "cfn-lint",
+          "version": "1.41.0",
           "informationUri": "https://github.com/aws-cloudformation/cfn-lint",
-          "rules": []
+          "rules": [
+            {
+              "id": "E0000",
+              "shortDescription": {
+                "text": "Parsing error"
+              },
+              "helpUri": "https://github.com/aws-cloudformation/cfn-lint/blob/main/docs/rules.md#E0000"
+            },
+            {
+              "id": "E1029",
+              "shortDescription": {
+                "text": "Sub validation error"
+              },
+              "helpUri": "https://github.com/aws-cloudformation/cfn-lint/blob/main/docs/rules.md#E1029"
+            },
+            {
+              "id": "E3002",
+              "shortDescription": {
+                "text": "Resource property error"
+              },
+              "helpUri": "https://github.com/aws-cloudformation/cfn-lint/blob/main/docs/rules.md#E3002"
+            },
+            {
+              "id": "E3043",
+              "shortDescription": {
+                "text": "Nested Stack parameter error"
+              },
+              "helpUri": "https://github.com/aws-cloudformation/cfn-lint/blob/main/docs/rules.md#E3043"
+            },
+            {
+              "id": "W1030",
+              "shortDescription": {
+                "text": "Reference warning"
+              },
+              "helpUri": "https://github.com/aws-cloudformation/cfn-lint/blob/main/docs/rules.md#W1030"
+            },
+            {
+              "id": "W2001",
+              "shortDescription": {
+                "text": "Parameter not used"
+              },
+              "helpUri": "https://github.com/aws-cloudformation/cfn-lint/blob/main/docs/rules.md#W2001"
+            },
+            {
+              "id": "W3002",
+              "shortDescription": {
+                "text": "Code may only work with package command"
+              },
+              "helpUri": "https://github.com/aws-cloudformation/cfn-lint/blob/main/docs/rules.md#W3002"
+            },
+            {
+              "id": "W3005",
+              "shortDescription": {
+                "text": "Dependency already enforced"
+              },
+              "helpUri": "https://github.com/aws-cloudformation/cfn-lint/blob/main/docs/rules.md#W3005"
+            },
+            {
+              "id": "W8001",
+              "shortDescription": {
+                "text": "Condition not used"
+              },
+              "helpUri": "https://github.com/aws-cloudformation/cfn-lint/blob/main/docs/rules.md#W8001"
+            }
+          ]
         }
       },
-      "artifacts": [
+      "results": [
         {
-          "location": {
-            "uri": "templates/network.yaml"
-          }
+          "ruleId": "E0000",
+          "level": "error",
+          "message": {
+            "text": "Did not find expected key"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "templates/database.yaml"
+                },
+                "region": {
+                  "startLine": 392,
+                  "startColumn": 9
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "W2001",
+          "level": "warning",
+          "message": {
+            "text": "Parameter MultiAZ not used."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "templates/db-read-replica.yaml"
+                },
+                "region": {
+                  "startLine": 51,
+                  "startColumn": 3
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "E1029",
+          "level": "error",
+          "message": {
+            "text": "Found an embedded parameter \"${ProjectName}\" outside of an \"Fn::Sub\""
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "templates/dr-lambda.yaml"
+                },
+                "region": {
+                  "startLine": 396,
+                  "startColumn": 9
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "E1029",
+          "level": "error",
+          "message": {
+            "text": "Found an embedded parameter \"${Environment}\" outside of an \"Fn::Sub\""
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "templates/dr-lambda.yaml"
+                },
+                "region": {
+                  "startLine": 396,
+                  "startColumn": 9
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "W8001",
+          "level": "warning",
+          "message": {
+            "text": "Condition ShouldCreateRoute53Zone not used"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "templates/dr-pilot-light.yaml"
+                },
+                "region": {
+                  "startLine": 149,
+                  "startColumn": 3
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "E0000",
+          "level": "error",
+          "message": {
+            "text": "Did not find expected '-' indicator"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "templates/subnet-template.yaml"
+                },
+                "region": {
+                  "startLine": 127,
+                  "startColumn": 13
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "E3002",
+          "level": "error",
+          "message": {
+            "text": "Additional properties are not allowed ('Tags' was unexpected)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "templates/route53-failover.yaml"
+                },
+                "region": {
+                  "startLine": 73,
+                  "startColumn": 7
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "E3002",
+          "level": "error",
+          "message": {
+            "text": "Additional properties are not allowed ('Tags' was unexpected)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "templates/route53-failover.yaml"
+                },
+                "region": {
+                  "startLine": 91,
+                  "startColumn": 7
+                }
+              }
+            }
+          ]
         }
       ],
-      "results": []
+      "invocations": [
+        {
+          "executionSuccessful": true,
+          "toolExecutionNotifications": [
+            {
+              "level": "note",
+              "message": {
+                "text": "Manual SARIF file created for SonarQube"
+              }
+            }
+          ]
+        }
+      ]
     }
   ]
 }

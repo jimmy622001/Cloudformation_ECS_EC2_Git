@@ -1,0 +1,33 @@
+---
+# CloudFormation Linter Configuration
+
+# Set the default region for linting
+regions:
+  - eu-west-1 # Primary region
+  - eu-west-2 # DR region
+
+# Ignore specific rule types if needed
+ignore_checks:
+  # W3002 "This code may only work with 'package' cli command" 
+  # This warning is unavoidable when using nested stacks with local paths
+  - W3002
+  # W3005 "Dependency already enforced" warnings - these are redundant but explicit dependencies are clearer
+  - W3005
+
+# Configure specific rules if needed
+configure_rules:
+  # We want to be strict about IAM policies
+  E2520: # IAM Policy wildcard without IAM constraints
+    strict: true
+
+# Set a limit for the number of outputs
+limit_outputs: 60
+
+# Set a limit for the number of parameters
+limit_parameters: 60
+
+# Set a limit for the number of resources
+limit_resources: 200
+
+# Set a limit for the number of mappings
+limit_mappings: 10

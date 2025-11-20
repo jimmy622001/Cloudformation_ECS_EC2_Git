@@ -146,7 +146,6 @@ Parameters:
 
 Conditions:
   ShouldCreateElastiCache: !Equals [!Ref EnableElastiCache, 'true']
-  ShouldCreateRoute53Zone: !Equals [!Ref CreateRoute53Zone, 'true']
 
 Resources:
   NetworkStack:
@@ -268,6 +267,7 @@ Resources:
         HealthCheckPath: /health
         Route53HostedZoneId: !Ref Route53HostedZoneId
         CreateHostedZone: !Ref CreateRoute53Zone
+        # Note: The Route53 template handles the hosted zone creation internally
         LambdaArn: !GetAtt DRLambdaStack.Outputs.LambdaArn
         LambdaName: !GetAtt DRLambdaStack.Outputs.LambdaName
 
