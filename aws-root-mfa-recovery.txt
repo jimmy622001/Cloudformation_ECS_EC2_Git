@@ -1,0 +1,62 @@
+AWS Root Account MFA Recovery Guide
+===================================
+
+Account ID: 667021093945
+Email: jimmy622001@gmail.com
+
+STEP 1: Reset MFA via AWS Sign-in Page
+--------------------------------------
+1. Go to: https://signin.aws.amazon.com/
+2. Enter your root email: jimmy622001@gmail.com
+3. Click "Forgot your password?" 
+4. OR click "Having trouble signing in?"
+5. Select "I forgot my MFA device" or similar option
+
+STEP 2: Alternative Sign-in Methods
+-----------------------------------
+Try these options on the sign-in page:
+- "Sign in using alternative factors"
+- "Troubleshoot MFA"
+- "Can't access your MFA device?"
+
+STEP 3: Contact AWS Support (No Account Required)
+-------------------------------------------------
+Since you can't access your account, use the public support form:
+
+1. Go to: https://support.aws.amazon.com/
+2. Click "Create case" (no sign-in required for account access issues)
+3. Select "Account and billing support"
+4. Choose "Account Access" issue type
+
+Support Case Details:
+- Account ID: 667021093945
+- Root email: jimmy622001@gmail.com
+- Issue: Lost MFA device, cannot access root account
+- Request: Reset MFA or provide alternative access method
+
+Required Information for AWS Support:
+- Last 4 digits of credit card on file
+- Billing address
+- Phone number associated with account
+- Recent AWS charges/usage details
+
+STEP 4: Phone Support (If Available)
+------------------------------------
+AWS Support Phone: 1-206-266-4064
+- Explain you've lost MFA access to root account
+- Have account verification details ready
+
+STEP 5: After Regaining Access
+------------------------------
+1. Immediately set up new MFA device
+2. Consider setting up multiple MFA devices
+3. Download recovery codes if available
+4. Update contact information
+
+IMPORTANT NOTES:
+- This process may take 24-48 hours
+- AWS will verify your identity thoroughly
+- Keep all account verification documents ready
+- Consider using hardware MFA devices in future
+
+Alternative: If you have IAM users with admin permissions, you might be able to manage the organization through them, but root access is typically required for organization deletion.

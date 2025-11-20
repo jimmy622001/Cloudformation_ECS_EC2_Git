@@ -1,0 +1,35 @@
+AWS Support Case Information
+===========================
+
+Subject: Unable to delete AWS Organization due to suspended/closed member accounts
+
+Account ID: 667021093945
+Organization ID: (from your AWS Console)
+
+Issue Description:
+I am trying to delete my AWS Organization but cannot remove member accounts due to constraint violations. The member accounts are showing as SUSPENDED/CLOSED but still prevent organization deletion.
+
+Member Accounts:
+- audit (604224672061) - Status: SUSPENDED
+- Audit (881455453167) - Status: SUSPENDED  
+- Dimitri (325428505676) - Status: SUSPENDED
+- website (129929455171) - Status: SUSPENDED
+
+Error Messages:
+1. When trying to remove accounts: "The member account is missing one or more of the prerequisites required to operate as a standalone account"
+2. When trying to delete organization: "To delete an organization you must first remove all member accounts (except the master)"
+
+Request:
+Please help remove these suspended/closed member accounts from the organization so I can delete the organization, or delete the organization directly.
+
+Steps Already Attempted:
+- Tried removing accounts via AWS CLI
+- Tried closing accounts
+- All accounts show as CLOSED in console but SUSPENDED via CLI
+
+Contact Information:
+- Email: jimmy622001@gmail.com
+- Preferred contact method: Email
+- Urgency: Standard
+
+Thank you for your assistance.

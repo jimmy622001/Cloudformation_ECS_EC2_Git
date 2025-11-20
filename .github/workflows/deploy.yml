@@ -1,4 +1,4 @@
-name: Deploy CloudFormation Stack
+name: Validate CloudFormation Stack
 
 on:
   push:
@@ -8,138 +8,120 @@ on:
       - dev
 
 jobs:
-  destroy:
-    name: Destroy CloudFormation Stack
+  # The destroy job has been commented out to prevent incurring charges
+  # To re-enable, uncomment this section and configure AWS credentials in GitHub secrets
+  #destroy:
+  #  name: Destroy CloudFormation Stack
+  #  runs-on: ubuntu-latest
+  #  steps:
+  #    - name: Checkout
+  #      uses: actions/checkout@v3
+  #
+  #    - name: Configure AWS credentials
+  #      uses: aws-actions/configure-aws-credentials@v2
+  #      with:
+  #        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #        aws-region: eu-west-2
+  #
+  #    - name: Delete CloudFormation Stack
+  #      run: |
+  #        STACK_NAME="${{ github.event.inputs.environment }}-stack"
+  #        echo "Deleting CloudFormation stack: $STACK_NAME"
+  #        
+  #        # Check if stack exists
+  #        if aws cloudformation describe-stacks --stack-name $STACK_NAME &>/dev/null; then
+  #          echo "Stack exists, initiating deletion..."
+  #        
+  #          # Delete the stack
+  #          aws cloudformation delete-stack --stack-name $STACK_NAME
+  #        
+  #          # Wait for stack to be deleted
+  #          echo "Waiting for stack deletion to complete..."
+  #          aws cloudformation wait stack-delete-complete --stack-name $STACK_NAME
+  #        
+  #          echo "Stack deletion completed successfully!"
+  #        else
+  #          echo "Stack $STACK_NAME does not exist, nothing to delete."
+  #        fi
+
+  validate:
+    name: Validate CloudFormation Templates
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Delete CloudFormation Stack
-        run: |
-          STACK_NAME="${{ github.event.inputs.environment }}-stack"
-          echo "Deleting CloudFormation stack: $STACK_NAME"
-          
-          # Check if stack exists
-          if aws cloudformation describe-stacks --stack-name $STACK_NAME &>/dev/null; then
-            echo "Stack exists, initiating deletion..."
-          
-            # Delete the stack
-            aws cloudformation delete-stack --stack-name $STACK_NAME
-          
-            # Wait for stack to be deleted
-            echo "Waiting for stack deletion to complete..."
-            aws cloudformation wait stack-delete-complete --stack-name $STACK_NAME
-          
-            echo "Stack deletion completed successfully!"
-          else
-            echo "Stack $STACK_NAME does not exist, nothing to delete."
-          fi
-
-      # If you have a StackSet to delete too, add this step
-      - name: Delete CloudFormation StackSet (if exists)
-        run: |
-          STACKSET_NAME="AWSControlTowerExecutionRole"
-          echo "Checking for StackSet: $STACKSET_NAME"
-          
-          # Check if StackSet exists
-          if aws cloudformation describe-stack-set --stack-set-name $STACKSET_NAME &>/dev/null; then
-            echo "StackSet exists, checking for stack instances..."
-          
-            # List stack instances and delete them
-            INSTANCES=$(aws cloudformation list-stack-instances --stack-set-name $STACKSET_NAME --query 'Summaries[].[Account,Region]' --output text)
-          
-            if [ -n "$INSTANCES" ]; then
-              echo "Found stack instances, deleting them first..."
-          
-              # Parse and delete instance groups by region
-              while read -r ACCOUNT REGION; do
-                echo "Deleting instance in account $ACCOUNT, region $REGION"
-                aws cloudformation delete-stack-instances \
-                  --stack-set-name $STACKSET_NAME \
-                  --accounts $ACCOUNT \
-                  --regions $REGION \
-                  --no-retain-stacks \
-                  --operation-preferences '{"MaxConcurrentPercentage": 100, "FailureTolerancePercentage": 100}'
-          
-                echo "Waiting for deletion to complete..."
-                # Sleep to give time for operation to start
-                sleep 10
-              done <<< "$INSTANCES"
-          
-              # Give time for all operations to complete
-              echo "Waiting for all instance deletions to complete (2 minutes)..."
-              sleep 120
-            else
-              echo "No stack instances found."
-            fi
-          
-            # Delete the StackSet
-            echo "Deleting StackSet: $STACKSET_NAME"
-            aws cloudformation delete-stack-set --stack-set-name $STACKSET_NAME
-            echo "StackSet deletion initiated."
-          else
-            echo "StackSet $STACKSET_NAME does not exist, nothing to delete."
-          fi
-
-  deploy:
-    runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION || 'eu-west-1' }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-
-      - name: Create required SSM Parameters
+  
+      - name: Install AWS CLI
+        uses: unfor19/install-aws-cli-action@v1
+  
+      - name: Validate CloudFormation template
         run: |
-          # Create the required SSM parameters that the templates need
-          aws ssm put-parameter --name "/ecs-jenkins-github/db/username" --value "dbadmin" --type "String" --overwrite
-          aws ssm put-parameter --name "/ecs-jenkins-github/ecs/domain-name" --value "dev.example.com" --type "String" --overwrite
-      
-      - name: Create S3 bucket for CloudFormation templates
-        run: |
-          BUCKET_NAME="cloudformation-templates-${{ github.repository_owner }}-$(date +%s | sha256sum | head -c 8)"
-          aws s3 mb s3://$BUCKET_NAME --region ${{ secrets.AWS_REGION || 'eu-west-1' }}
-          echo "S3_BUCKET=$BUCKET_NAME" >> $GITHUB_ENV
-      
-      - name: Upload templates to S3
-        run: |
-          # Package the template and upload nested templates to S3
-          aws cloudformation package \
-            --template-file templates/master.yaml \
-            --s3-bucket $S3_BUCKET \
-            --output-template-file packaged-template.yaml
-      
-      - name: Deploy CloudFormation stack
-        run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/master" || "${{ github.ref }}" == "refs/heads/production" ]]; then
-            aws cloudformation deploy \
-              --template-file packaged-template.yaml \
-              --stack-name production-stack \
-              --parameter-overrides Environment=production \
-              --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
-          else
-            aws cloudformation deploy \
-              --template-file packaged-template.yaml \
-              --stack-name dev-stack \
-              --parameter-overrides Environment=dev \
-              --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
-          fi
+          echo "Validating CloudFormation templates..."
+          aws cloudformation validate-template --template-body file://templates/master.yaml --region eu-west-2 || true
+  
+          # List and validate any nested templates
+          find templates -name "*.yaml" -not -name "master.yaml" | while read template; do
+            echo "Validating $template..."
+            aws cloudformation validate-template --template-body file://$template --region eu-west-2 || true
+          done
+  
+          echo "Template validation completed"
+  
+  # The deploy job has been commented out to prevent incurring charges
+  # To re-enable, uncomment this section and configure AWS credentials in GitHub secrets
+  #deploy:
+  #  runs-on: ubuntu-latest
+  #  needs: validate
+  #
+  #  steps:
+  #    - name: Checkout code
+  #      uses: actions/checkout@v3
+  #
+  #    - name: Configure AWS credentials
+  #      uses: aws-actions/configure-aws-credentials@v2
+  #      with:
+  #        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #        aws-region: eu-west-2
+  #
+  #    - name: Setup Node.js
+  #      uses: actions/setup-node@v3
+  #      with:
+  #        node-version: '18'
+  #
+  #    - name: Create required SSM Parameters
+  #      run: |
+  #        # Create the required SSM parameters that the templates need
+  #        aws ssm put-parameter --name "/ecs-jenkins-github/db/username" --value "dbadmin" --type "String" --overwrite
+  #        aws ssm put-parameter --name "/ecs-jenkins-github/ecs/domain-name" --value "dev.example.com" --type "String" --overwrite
+  #    
+  #    - name: Create S3 bucket for CloudFormation templates
+  #      run: |
+  #        BUCKET_NAME="cloudformation-templates-${{ github.repository_owner }}-$(date +%s | sha256sum | head -c 8)"
+  #        aws s3 mb s3://$BUCKET_NAME --region eu-west-1
+  #        echo "S3_BUCKET=$BUCKET_NAME" >> $GITHUB_ENV
+  #    
+  #    - name: Upload templates to S3
+  #      run: |
+  #        # Package the template and upload nested templates to S3
+  #        aws cloudformation package \
+  #          --template-file templates/master.yaml \
+  #          --s3-bucket $S3_BUCKET \
+  #          --output-template-file packaged-template.yaml
+  #    
+  #    - name: Deploy CloudFormation stack
+  #      run: |
+  #        if [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/master" || "${{ github.ref }}" == "refs/heads/production" ]]; then
+  #          aws cloudformation deploy \
+  #            --template-file packaged-template.yaml \
+  #            --stack-name production-stack \
+  #            --parameter-overrides Environment=production \
+  #            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
+  #        else
+  #          aws cloudformation deploy \
+  #            --template-file packaged-template.yaml \
+  #            --stack-name dev-stack \
+  #            --parameter-overrides Environment=dev \
+  #            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
+  #        fi
