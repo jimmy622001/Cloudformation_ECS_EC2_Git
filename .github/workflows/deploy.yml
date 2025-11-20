@@ -88,10 +88,8 @@ jobs:
           else
             echo "StackSet $STACKSET_NAME does not exist, nothing to delete."
           fi
-  </parameter>
-  <parameter name="overwrite">true</parameter>
-  </invoke>
-  #deploy:
+
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
