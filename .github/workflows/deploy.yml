@@ -8,7 +8,90 @@ on:
       - dev
 
 jobs:
-  deploy:
+  destroy:
+    name: Destroy CloudFormation Stack
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Delete CloudFormation Stack
+        run: |
+          STACK_NAME="${{ github.event.inputs.environment }}-stack"
+          echo "Deleting CloudFormation stack: $STACK_NAME"
+          
+          # Check if stack exists
+          if aws cloudformation describe-stacks --stack-name $STACK_NAME &>/dev/null; then
+            echo "Stack exists, initiating deletion..."
+          
+            # Delete the stack
+            aws cloudformation delete-stack --stack-name $STACK_NAME
+          
+            # Wait for stack to be deleted
+            echo "Waiting for stack deletion to complete..."
+            aws cloudformation wait stack-delete-complete --stack-name $STACK_NAME
+          
+            echo "Stack deletion completed successfully!"
+          else
+            echo "Stack $STACK_NAME does not exist, nothing to delete."
+          fi
+
+      # If you have a StackSet to delete too, add this step
+      - name: Delete CloudFormation StackSet (if exists)
+        run: |
+          STACKSET_NAME="AWSControlTowerExecutionRole"
+          echo "Checking for StackSet: $STACKSET_NAME"
+          
+          # Check if StackSet exists
+          if aws cloudformation describe-stack-set --stack-set-name $STACKSET_NAME &>/dev/null; then
+            echo "StackSet exists, checking for stack instances..."
+          
+            # List stack instances and delete them
+            INSTANCES=$(aws cloudformation list-stack-instances --stack-set-name $STACKSET_NAME --query 'Summaries[].[Account,Region]' --output text)
+          
+            if [ -n "$INSTANCES" ]; then
+              echo "Found stack instances, deleting them first..."
+          
+              # Parse and delete instance groups by region
+              while read -r ACCOUNT REGION; do
+                echo "Deleting instance in account $ACCOUNT, region $REGION"
+                aws cloudformation delete-stack-instances \
+                  --stack-set-name $STACKSET_NAME \
+                  --accounts $ACCOUNT \
+                  --regions $REGION \
+                  --no-retain-stacks \
+                  --operation-preferences '{"MaxConcurrentPercentage": 100, "FailureTolerancePercentage": 100}'
+          
+                echo "Waiting for deletion to complete..."
+                # Sleep to give time for operation to start
+                sleep 10
+              done <<< "$INSTANCES"
+          
+              # Give time for all operations to complete
+              echo "Waiting for all instance deletions to complete (2 minutes)..."
+              sleep 120
+            else
+              echo "No stack instances found."
+            fi
+          
+            # Delete the StackSet
+            echo "Deleting StackSet: $STACKSET_NAME"
+            aws cloudformation delete-stack-set --stack-set-name $STACKSET_NAME
+            echo "StackSet deletion initiated."
+          else
+            echo "StackSet $STACKSET_NAME does not exist, nothing to delete."
+          fi
+  </parameter>
+  <parameter name="overwrite">true</parameter>
+  </invoke>
+  #deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -54,11 +137,11 @@ jobs:
               --template-file packaged-template.yaml \
               --stack-name production-stack \
               --parameter-overrides Environment=production \
-              --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND
+              --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
           else
             aws cloudformation deploy \
               --template-file packaged-template.yaml \
               --stack-name dev-stack \
               --parameter-overrides Environment=dev \
-              --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND
+              --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
           fi
