@@ -30,7 +30,7 @@ jobs:
       - name: Deploy CloudFormation stack
         run: |
           if [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/master" || "${{ github.ref }}" == "refs/heads/production" ]]; then
-            aws cloudformation deploy --template-file templates/main.yml --stack-name production-stack --parameter-overrides Environment=production --capabilities CAPABILITY_IAM
+            aws cloudformation deploy --template-file templates/master.yaml --stack-name production-stack --parameter-overrides Environment=production --capabilities CAPABILITY_IAM
           else
-            aws cloudformation deploy --template-file templates/main.yml --stack-name dev-stack --parameter-overrides Environment=dev --capabilities CAPABILITY_IAM
+            aws cloudformation deploy --template-file templates/master.yaml --stack-name dev-stack --parameter-overrides Environment=dev --capabilities CAPABILITY_IAM
           fi
