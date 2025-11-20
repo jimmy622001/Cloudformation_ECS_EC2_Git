@@ -1,255 +1,562 @@
 {
-  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-  "version": "2.1.0",
   "runs": [
     {
       "tool": {
         "driver": {
           "name": "cfn-lint",
-          "version": "1.41.0",
-          "informationUri": "https://github.com/aws-cloudformation/cfn-lint",
           "rules": [
             {
-              "id": "E0000",
-              "shortDescription": {
-                "text": "Parsing error"
+              "id": "E1027",
+              "fullDescription": {
+                "text": "Dynamic References Secure Strings are only supported for a small set of resource properties.  Validate that they are being used in the correct location when checking values and Fn::Sub in resource properties. Currently doesn't check outputs, maps, conditions, parameters, and descriptions."
               },
-              "helpUri": "https://github.com/aws-cloudformation/cfn-lint/blob/main/docs/rules.md#E0000"
-            },
-            {
-              "id": "E1029",
+              "helpUri": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/dynamic-references.html",
               "shortDescription": {
-                "text": "Sub validation error"
-              },
-              "helpUri": "https://github.com/aws-cloudformation/cfn-lint/blob/main/docs/rules.md#E1029"
-            },
-            {
-              "id": "E3002",
-              "shortDescription": {
-                "text": "Resource property error"
-              },
-              "helpUri": "https://github.com/aws-cloudformation/cfn-lint/blob/main/docs/rules.md#E3002"
+                "text": "Check dynamic references secure strings are in supported locations"
+              }
             },
             {
               "id": "E3043",
-              "shortDescription": {
-                "text": "Nested Stack parameter error"
+              "fullDescription": {
+                "text": "Evalute if parameters for a nested stack are specified and if parameters are specified for a nested stack that aren't required."
               },
-              "helpUri": "https://github.com/aws-cloudformation/cfn-lint/blob/main/docs/rules.md#E3043"
+              "helpUri": "https://github.com/aws-cloudformation/cfn-lint",
+              "shortDescription": {
+                "text": "Validate parameters for in a nested stack"
+              }
             },
             {
-              "id": "W1030",
-              "shortDescription": {
-                "text": "Reference warning"
+              "id": "E3002",
+              "fullDescription": {
+                "text": "Making sure that resources properties are properly configured"
               },
-              "helpUri": "https://github.com/aws-cloudformation/cfn-lint/blob/main/docs/rules.md#W1030"
+              "helpUri": "https://github.com/aws-cloudformation/cfn-lint/blob/main/docs/cfn-schema-specification.md#properties",
+              "shortDescription": {
+                "text": "Resource properties are invalid"
+              }
             },
             {
-              "id": "W2001",
-              "shortDescription": {
-                "text": "Parameter not used"
+              "id": "E1010",
+              "fullDescription": {
+                "text": "Validates that GetAtt parameters are to valid resources and properties of those resources"
               },
-              "helpUri": "https://github.com/aws-cloudformation/cfn-lint/blob/main/docs/rules.md#W2001"
+              "helpUri": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/intrinsic-function-reference-getatt.html",
+              "shortDescription": {
+                "text": "GetAtt validation of parameters"
+              }
             },
             {
-              "id": "W3002",
-              "shortDescription": {
-                "text": "Code may only work with package command"
+              "id": "E0000",
+              "fullDescription": {
+                "text": "Checks for JSON/YAML formatting errors in your template"
               },
-              "helpUri": "https://github.com/aws-cloudformation/cfn-lint/blob/main/docs/rules.md#W3002"
-            },
-            {
-              "id": "W3005",
+              "helpUri": "https://github.com/aws-cloudformation/cfn-lint",
               "shortDescription": {
-                "text": "Dependency already enforced"
-              },
-              "helpUri": "https://github.com/aws-cloudformation/cfn-lint/blob/main/docs/rules.md#W3005"
-            },
-            {
-              "id": "W8001",
-              "shortDescription": {
-                "text": "Condition not used"
-              },
-              "helpUri": "https://github.com/aws-cloudformation/cfn-lint/blob/main/docs/rules.md#W8001"
+                "text": "Parsing error found when parsing the template"
+              }
             }
-          ]
+          ],
+          "version": "1.41.0",
+          "informationUri": "https://github.com/aws-cloudformation/cfn-lint",
+          "shortDescription": {
+            "text": "Validates AWS CloudFormation templates against the resource specification and additional checks."
+          }
         }
       },
       "results": [
         {
-          "ruleId": "E0000",
+          "message": {
+            "text": "did not find expected key"
+          },
           "level": "error",
-          "message": {
-            "text": "Did not find expected key"
-          },
           "locations": [
             {
               "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "templates/database.yaml"
-                },
                 "region": {
-                  "startLine": 392,
-                  "startColumn": 9
+                  "endColumn": 10,
+                  "endLine": 392,
+                  "startColumn": 9,
+                  "startLine": 392
+                },
+                "artifactLocation": {
+                  "uri": "templates\\database.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
                 }
               }
             }
-          ]
+          ],
+          "ruleId": "E0000"
         },
         {
-          "ruleId": "W2001",
-          "level": "warning",
           "message": {
-            "text": "Parameter MultiAZ not used."
+            "text": "Specified parameter \"VpcId\" doesn't exist in nested stack template at Resources/SecurityStack/Properties/Parameters/VpcId"
           },
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "templates/db-read-replica.yaml"
-                },
-                "region": {
-                  "startLine": 51,
-                  "startColumn": 3
-                }
-              }
-            }
-          ]
-        },
-        {
-          "ruleId": "E1029",
           "level": "error",
-          "message": {
-            "text": "Found an embedded parameter \"${ProjectName}\" outside of an \"Fn::Sub\""
-          },
           "locations": [
             {
               "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "templates/dr-lambda.yaml"
-                },
                 "region": {
-                  "startLine": 396,
-                  "startColumn": 9
+                  "endColumn": 14,
+                  "endLine": 182,
+                  "startColumn": 9,
+                  "startLine": 182
+                },
+                "artifactLocation": {
+                  "uri": "templates\\dr-pilot-light.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
                 }
               }
             }
-          ]
+          ],
+          "ruleId": "E3043"
         },
         {
-          "ruleId": "E1029",
+          "message": {
+            "text": "Nested stack template parameter \"ECSOptimizedAMI\" is not specified at Resources/ECSStack/Properties/Parameters"
+          },
           "level": "error",
-          "message": {
-            "text": "Found an embedded parameter \"${Environment}\" outside of an \"Fn::Sub\""
-          },
           "locations": [
             {
               "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "templates/dr-lambda.yaml"
-                },
                 "region": {
-                  "startLine": 396,
-                  "startColumn": 9
+                  "endColumn": 17,
+                  "endLine": 199,
+                  "startColumn": 7,
+                  "startLine": 199
+                },
+                "artifactLocation": {
+                  "uri": "templates\\dr-pilot-light.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
                 }
               }
             }
-          ]
+          ],
+          "ruleId": "E3043"
         },
         {
-          "ruleId": "W8001",
-          "level": "warning",
           "message": {
-            "text": "Condition ShouldCreateRoute53Zone not used"
+            "text": "Specified parameter \"ContainerInsights\" doesn't exist in nested stack template at Resources/ECSStack/Properties/Parameters/ContainerInsights"
           },
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "templates/dr-pilot-light.yaml"
-                },
-                "region": {
-                  "startLine": 149,
-                  "startColumn": 3
-                }
-              }
-            }
-          ]
-        },
-        {
-          "ruleId": "E0000",
           "level": "error",
-          "message": {
-            "text": "Did not find expected '-' indicator"
-          },
           "locations": [
             {
               "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "templates/subnet-template.yaml"
-                },
                 "region": {
-                  "startLine": 127,
-                  "startColumn": 13
+                  "endColumn": 26,
+                  "endLine": 209,
+                  "startColumn": 9,
+                  "startLine": 209
+                },
+                "artifactLocation": {
+                  "uri": "templates\\dr-pilot-light.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
                 }
               }
             }
-          ]
+          ],
+          "ruleId": "E3043"
         },
         {
-          "ruleId": "E3002",
+          "message": {
+            "text": "Specified parameter \"UseSpotInstances\" doesn't exist in nested stack template at Resources/ECSStack/Properties/Parameters/UseSpotInstances"
+          },
           "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "endColumn": 25,
+                  "endLine": 224,
+                  "startColumn": 9,
+                  "startLine": 224
+                },
+                "artifactLocation": {
+                  "uri": "templates\\dr-pilot-light.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
+                }
+              }
+            }
+          ],
+          "ruleId": "E3043"
+        },
+        {
+          "message": {
+            "text": "Specified parameter \"OnDemandPercentage\" doesn't exist in nested stack template at Resources/ECSStack/Properties/Parameters/OnDemandPercentage"
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "endColumn": 27,
+                  "endLine": 225,
+                  "startColumn": 9,
+                  "startLine": 225
+                },
+                "artifactLocation": {
+                  "uri": "templates\\dr-pilot-light.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
+                }
+              }
+            }
+          ],
+          "ruleId": "E3043"
+        },
+        {
+          "message": {
+            "text": "'Outputs.ECSAutoScalingGroupName' is not one of ['Outputs.ECSClusterArn', 'Outputs.ECSClusterName', 'Outputs.ECSServiceName', 'Outputs.ALBArn', 'Outputs.ALBName', 'Outputs.ALBDNSName', 'Outputs.ALBTargetGroupArn', 'Outputs.ALBHttpsListenerArn'] in ['eu-west-1', 'eu-west-2']"
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "endColumn": 16,
+                  "endLine": 241,
+                  "startColumn": 9,
+                  "startLine": 241
+                },
+                "artifactLocation": {
+                  "uri": "templates\\dr-pilot-light.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
+                }
+              }
+            }
+          ],
+          "ruleId": "E1010"
+        },
+        {
+          "message": {
+            "text": "'Outputs.ALBHostedZoneID' is not one of ['Outputs.ECSClusterArn', 'Outputs.ECSClusterName', 'Outputs.ECSServiceName', 'Outputs.ALBArn', 'Outputs.ALBName', 'Outputs.ALBDNSName', 'Outputs.ALBTargetGroupArn', 'Outputs.ALBHttpsListenerArn'] in ['eu-west-1', 'eu-west-2']"
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "endColumn": 24,
+                  "endLine": 266,
+                  "startColumn": 9,
+                  "startLine": 266
+                },
+                "artifactLocation": {
+                  "uri": "templates\\dr-pilot-light.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
+                }
+              }
+            }
+          ],
+          "ruleId": "E1010"
+        },
+        {
+          "message": {
+            "text": "Specified parameter \"VpcId\" doesn't exist in nested stack template at Resources/DatabaseReadReplica/Properties/Parameters/VpcId"
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "endColumn": 14,
+                  "endLine": 283,
+                  "startColumn": 9,
+                  "startLine": 283
+                },
+                "artifactLocation": {
+                  "uri": "templates\\dr-pilot-light.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
+                }
+              }
+            }
+          ],
+          "ruleId": "E3043"
+        },
+        {
+          "message": {
+            "text": "Specified parameter \"DBEngineVersion\" doesn't exist in nested stack template at Resources/DatabaseReadReplica/Properties/Parameters/DBEngineVersion"
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "endColumn": 24,
+                  "endLine": 287,
+                  "startColumn": 9,
+                  "startLine": 287
+                },
+                "artifactLocation": {
+                  "uri": "templates\\dr-pilot-light.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
+                }
+              }
+            }
+          ],
+          "ruleId": "E3043"
+        },
+        {
+          "message": {
+            "text": "Specified parameter \"MultiAZ\" doesn't exist in nested stack template at Resources/DatabaseReadReplica/Properties/Parameters/MultiAZ"
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "endColumn": 16,
+                  "endLine": 291,
+                  "startColumn": 9,
+                  "startLine": 291
+                },
+                "artifactLocation": {
+                  "uri": "templates\\dr-pilot-light.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
+                }
+              }
+            }
+          ],
+          "ruleId": "E3043"
+        },
+        {
+          "message": {
+            "text": "Specified parameter \"VpcId\" doesn't exist in nested stack template at Resources/SecurityStack/Properties/Parameters/VpcId"
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "endColumn": 14,
+                  "endLine": 58,
+                  "startColumn": 9,
+                  "startLine": 58
+                },
+                "artifactLocation": {
+                  "uri": "templates\\master.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
+                }
+              }
+            }
+          ],
+          "ruleId": "E3043"
+        },
+        {
+          "message": {
+            "text": "Nested stack template parameter \"ECSOptimizedAMI\" is not specified at Resources/ECSStack/Properties/Parameters"
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "endColumn": 17,
+                  "endLine": 96,
+                  "startColumn": 7,
+                  "startLine": 96
+                },
+                "artifactLocation": {
+                  "uri": "templates\\master.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
+                }
+              }
+            }
+          ],
+          "ruleId": "E3043"
+        },
+        {
+          "message": {
+            "text": "Specified parameter \"ContainerInsights\" doesn't exist in nested stack template at Resources/ECSStack/Properties/Parameters/ContainerInsights"
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "endColumn": 26,
+                  "endLine": 106,
+                  "startColumn": 9,
+                  "startLine": 106
+                },
+                "artifactLocation": {
+                  "uri": "templates\\master.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
+                }
+              }
+            }
+          ],
+          "ruleId": "E3043"
+        },
+        {
+          "message": {
+            "text": "Nested stack template parameter \"JenkinsAMI\" is not specified at Resources/CICDStack/Properties/Parameters"
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "endColumn": 17,
+                  "endLine": 129,
+                  "startColumn": 7,
+                  "startLine": 129
+                },
+                "artifactLocation": {
+                  "uri": "templates\\master.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
+                }
+              }
+            }
+          ],
+          "ruleId": "E3043"
+        },
+        {
+          "message": {
+            "text": "Specified parameter \"GithubRepository\" doesn't exist in nested stack template at Resources/CICDStack/Properties/Parameters/GithubRepository"
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "endColumn": 25,
+                  "endLine": 139,
+                  "startColumn": 9,
+                  "startLine": 139
+                },
+                "artifactLocation": {
+                  "uri": "templates\\master.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
+                }
+              }
+            }
+          ],
+          "ruleId": "E3043"
+        },
+        {
+          "message": {
+            "text": "Specified parameter \"PrivateSubnets\" doesn't exist in nested stack template at Resources/MonitoringStack/Properties/Parameters/PrivateSubnets"
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "endColumn": 23,
+                  "endLine": 160,
+                  "startColumn": 9,
+                  "startLine": 160
+                },
+                "artifactLocation": {
+                  "uri": "templates\\master.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
+                }
+              }
+            }
+          ],
+          "ruleId": "E3043"
+        },
+        {
+          "message": {
+            "text": "Specified parameter \"PublicSubnets\" doesn't exist in nested stack template at Resources/MonitoringStack/Properties/Parameters/PublicSubnets"
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "endColumn": 22,
+                  "endLine": 161,
+                  "startColumn": 9,
+                  "startLine": 161
+                },
+                "artifactLocation": {
+                  "uri": "templates\\master.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
+                }
+              }
+            }
+          ],
+          "ruleId": "E3043"
+        },
+        {
+          "message": {
+            "text": "Dynamic reference 'resolve:ssm-secure:/ecs-jenkins-github/grafana/password:1' to SSM secure strings can only be used in resource properties"
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "endColumn": 24,
+                  "endLine": 173,
+                  "startColumn": 9,
+                  "startLine": 173
+                },
+                "artifactLocation": {
+                  "uri": "templates\\master.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
+                }
+              }
+            }
+          ],
+          "ruleId": "E1027"
+        },
+        {
           "message": {
             "text": "Additional properties are not allowed ('Tags' was unexpected)"
           },
+          "level": "error",
           "locations": [
             {
               "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "templates/route53-failover.yaml"
-                },
                 "region": {
-                  "startLine": 73,
-                  "startColumn": 7
+                  "endColumn": 11,
+                  "endLine": 73,
+                  "startColumn": 7,
+                  "startLine": 73
+                },
+                "artifactLocation": {
+                  "uri": "templates\\route53-failover.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
                 }
               }
             }
-          ]
+          ],
+          "ruleId": "E3002"
         },
         {
-          "ruleId": "E3002",
-          "level": "error",
           "message": {
-            "text": "Additional properties are not allowed ('Tags' was unexpected)"
+            "text": "did not find expected '-' indicator"
           },
+          "level": "error",
           "locations": [
             {
               "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "templates/route53-failover.yaml"
-                },
                 "region": {
-                  "startLine": 91,
-                  "startColumn": 7
+                  "endColumn": 16,
+                  "endLine": 127,
+                  "startColumn": 15,
+                  "startLine": 127
+                },
+                "artifactLocation": {
+                  "uri": "templates\\subnet-template.yaml",
+                  "uriBaseId": "EXECUTIONROOT"
                 }
               }
             }
-          ]
+          ],
+          "ruleId": "E0000"
         }
       ],
-      "invocations": [
-        {
-          "executionSuccessful": true,
-          "toolExecutionNotifications": [
-            {
-              "level": "note",
-              "message": {
-                "text": "Manual SARIF diagnostic file created"
-              }
-            }
-          ]
+      "originalUriBaseIds": {
+        "EXECUTIONROOT": {
+          "description": {
+            "text": "The directory in which cfn-lint was run."
+          }
         }
-      ]
+      }
     }
-  ]
+  ],
+  "version": "2.1.0",
+  "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/cos02/schemas/sarif-schema-2.1.0.json"
 }
