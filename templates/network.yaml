@@ -168,6 +168,7 @@ Resources:
         AvailabilityZones: !Ref AvailabilityZones
         CreateNatGateway: true
         AssociatePublicIpOnLaunch: true
+        IGWParam: !Ref InternetGateway
 
   # Private Subnets
   PrivateSubnets:
@@ -355,6 +356,12 @@ Outputs:
     Value: !Ref VPC
     Export:
       Name: !Sub '${ProjectName}-${Environment}-vpc-id'
+
+  InternetGateway:
+    Description: Internet Gateway ID
+    Value: !Ref InternetGateway
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-internet-gateway'
 
   PublicSubnets:
     Description: Public Subnet IDs

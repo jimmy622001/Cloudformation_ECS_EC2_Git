@@ -43,6 +43,11 @@ Parameters:
     Type: String
     Description: Comma-separated list of NAT Gateway IDs for route tables
     Default: ''
+  
+  IGWParam:
+    Type: String
+    Description: Internet Gateway ID for public routes
+    Default: ''
 
 Conditions:
   HasSubnet2: !Not [!Equals [!Select [1, !Split [",", !Ref SubnetCidrs]], ""]]
@@ -128,8 +133,7 @@ Resources:
     Properties:
       RouteTableId: !Ref RouteTable
       DestinationCidrBlock: 0.0.0.0/0
-      GatewayId: !ImportValue
-        Fn::Sub: ${ProjectName}-${Environment}-internet-gateway
+      GatewayId: !Ref IGWParam
 
   PrivateRoute:
     Type: AWS::EC2::Route
