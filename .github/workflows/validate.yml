@@ -36,6 +36,8 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-west-2
+          mask-aws-account-id: true
+          mask-aws-account-id: true
           
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -122,7 +124,7 @@ jobs:
           cat change-set-details.json
       
       - name: Upload Change Set Details
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: change-set-details
           path: change-set-details.json

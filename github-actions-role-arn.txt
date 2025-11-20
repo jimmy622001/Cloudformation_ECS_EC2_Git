@@ -1,0 +1,1 @@
+arn:aws:iam::038462783607:role/ecs-jenkins-github-github-actions-role

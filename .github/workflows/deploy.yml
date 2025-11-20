@@ -84,6 +84,7 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: eu-west-2
+          role-session-name: GitHubActionsDeployment
       
       - name: Determine environment
         id: env
@@ -160,7 +161,7 @@ jobs:
       
       - name: Upload Stack Outputs
         if: success()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: stack-outputs
           path: stack-outputs.json

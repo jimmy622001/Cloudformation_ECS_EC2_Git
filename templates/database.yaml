@@ -307,30 +307,30 @@ Resources:
       SecretString: !Join 
         - ''
         - - '{"username":"'
-          - !Ref DBUsername
-          - '","password":"'
-          - !Sub '{{resolve:secretsmanager:${DBPasswordSecret}::password}}'
-          - '","engine":"'
-          - !Ref DBEngine
-          - '","host":"'
-          - !GetAtt DBInstance.Endpoint.Address
-          - '","port":"'
-          - !GetAtt DBInstance.Endpoint.Port
-          - '","dbname":"'
-          - !Ref DBName
-          - '","url":"'
-          - !Ref DBEngine
-          - '://'
-          - !Ref DBUsername
-          - ':'
-          - !Sub '{{resolve:secretsmanager:${DBPasswordSecret}::password}}'
-          - '@'
-          - !GetAtt DBInstance.Endpoint.Address
-          - ':'
-          - !GetAtt DBInstance.Endpoint.Port
-          - '/'
-          - !Ref DBName
-          - '"}'
+        - !Ref DBUsername
+        - '","password":"'
+        - !Sub '{{resolve:secretsmanager:${DBPasswordSecret}::password}}'
+        - '","engine":"'
+        - !Ref DBEngine
+        - '","host":"'
+        - !GetAtt DBInstance.Endpoint.Address
+        - '","port":"'
+        - !GetAtt DBInstance.Endpoint.Port
+        - '","dbname":"'
+        - !Ref DBName
+        - '","url":"'
+        - !Ref DBEngine
+        - '://'
+        - !Ref DBUsername
+        - ':'
+        - !Sub '{{resolve:secretsmanager:${DBPasswordSecret}::password}}'
+        - '@'
+        - !GetAtt DBInstance.Endpoint.Address
+        - ':'
+        - !GetAtt DBInstance.Endpoint.Port
+        - '/'
+        - !Ref DBName
+        - '"}'
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${Environment}-db-credentials'

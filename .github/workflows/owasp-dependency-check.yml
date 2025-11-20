@@ -28,7 +28,7 @@ jobs:
             --scan templates/
       
       - name: Upload Report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Dependency Check Report
           path: reports/

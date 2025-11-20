@@ -124,7 +124,7 @@ Resources:
         SubnetIds: !Split
           - ','
           - !ImportValue 
-            !Sub '${ProjectName}-${Environment}-private-subnets'
+              !Sub '${ProjectName}-${Environment}-private-subnets'
       Code:
         ZipFile: |
           import json

@@ -3,7 +3,7 @@ echo Setting up IAM Role for GitHub Actions OIDC authentication
 
 REM Set variables
 set PROJECT_NAME=ecs-jenkins-github
-set GITHUB_ORG=your-github-username-or-org
+set GITHUB_ORG=jimmy622001
 set GITHUB_REPO=CloudFormation_ECS_EC2_Jenkins_Git
 
 echo Deploying GitHub Actions OIDC Role...
