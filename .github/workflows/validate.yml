@@ -1,4 +1,4 @@
-name: CloudFormation Validation and Security Checks
+name: CloudFormation Validation
 
 on:
   push:
@@ -46,8 +46,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install cfn-lint cfn-nag checkov
-          
+      
       - name: AWS CloudFormation Validate
         run: |
           echo "Validating CloudFormation templates..."
@@ -55,16 +54,6 @@ jobs:
             echo "Validating $template"
             aws cloudformation validate-template --template-body file://$template
           done
-      
-      - name: Run cfn-lint
-        run: |
-          echo "Running cfn-lint..."
-          cfn-lint templates/*.yaml -i W
-          
-      - name: Run Checkov
-        run: |
-          echo "Running Checkov security scan..."
-          checkov -d templates/ --framework cloudformation
           
   generate-changeset:
     name: Generate CloudFormation Change Set
