@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2024-03-27T12:00:00.000Z" agent="5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36" etag="hash" version="24.1.1" type="device">
+  <diagram id="architecture-diagram" name="CloudFormation ECS-EC2-Jenkins-Git Architecture">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="2" value="CloudFormation ECS-EC2-Jenkins-Git Infrastructure" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="400" y="20" width="370" height="30" as="geometry"/>
+        </mxCell>
+
+        <!-- Master Stack -->
+        <mxCell id="3" value="Master Stack&#xa;(master.yaml)" style="shape=rectangle;rounded=1;fillColor=#E1F5FE;strokeColor=#01579B;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="50" y="80" width="150" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- Nested Stacks -->
+        <mxCell id="4" value="Network Stack&#xa;(network.yaml)" style="shape=rectangle;rounded=1;fillColor=#F3E5F5;strokeColor=#4A148C;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="250" y="80" width="150" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="5" value="IAM Stack&#xa;(iam.yaml)" style="shape=rectangle;rounded=1;fillColor=#FFF3E0;strokeColor=#E65100;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="450" y="80" width="150" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="6" value="Security Stack&#xa;(security.yaml)" style="shape=rectangle;rounded=1;fillColor=#FFEBEE;strokeColor=#B71C1C;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="650" y="80" width="150" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="7" value="Database Stack&#xa;(database.yaml)" style="shape=rectangle;rounded=1;fillColor=#E8F5E8;strokeColor=#1B5E20;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="250" y="180" width="150" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="8" value="ECS Stack&#xa;(ecs.yaml)" style="shape=rectangle;rounded=1;fillColor=#E3F2FD;strokeColor=#0D47A1;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="450" y="180" width="150" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="9" value="CICD Stack&#xa;(cicd.yaml)" style="shape=rectangle;rounded=1;fillColor=#FCE4EC;strokeColor=#880E4F;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="650" y="180" width="150" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="10" value="Monitoring Stack&#xa;(monitoring.yaml)" style="shape=rectangle;rounded=1;fillColor=#FFF8E1;strokeColor=#F57F17;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="450" y="280" width="150" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="11" value="Cache Stack&#xa;(cache.yaml)" style="shape=rectangle;rounded=1;fillColor=#F1F8E9;strokeColor=#33691E;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="650" y="280" width="150" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- AWS Services -->
+        <mxCell id="12" value="VPC &amp; Networking" style="shape=rectangle;rounded=1;fillColor=#E8EAF6;strokeColor=#1A237E;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="50" y="380" width="120" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="13" value="Amazon ECS&#xa;Cluster" style="shape=rectangle;rounded=1;fillColor=#E3F2FD;strokeColor=#0D47A1;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="200" y="380" width="120" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="14" value="Application Load&#xa;Balancer" style="shape=rectangle;rounded=1;fillColor=#FFF3E0;strokeColor=#E65100;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="350" y="380" width="120" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="15" value="Amazon RDS&#xa;PostgreSQL/MySQL" style="shape=rectangle;rounded=1;fillColor=#E8F5E8;strokeColor=#1B5E20;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="500" y="380" width="120" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="16" value="ElastiCache&#xa;Redis" style="shape=rectangle;rounded=1;fillColor=#F1F8E9;strokeColor=#33691E;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="650" y="380" width="120" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="17" value="Jenkins CI/CD" style="shape=rectangle;rounded=1;fillColor=#FCE4EC;strokeColor=#880E4F;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="800" y="380" width="120" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- Security Services -->
+        <mxCell id="18" value="Security Services" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="50" y="500" width="150" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="19" value="AWS WAF" style="shape=rectangle;rounded=1;fillColor=#FFEBEE;strokeColor=#B71C1C;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="50" y="540" width="100" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="20" value="AWS GuardDuty" style="shape=rectangle;rounded=1;fillColor=#FFEBEE;strokeColor=#B71C1C;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="170" y="540" width="100" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="21" value="AWS Security Hub" style="shape=rectangle;rounded=1;fillColor=#FFEBEE;strokeColor=#B71C1C;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="290" y="540" width="100" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="22" value="AWS Config" style="shape=rectangle;rounded=1;fillColor=#FFEBEE;strokeColor=#B71C1C;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="410" y="540" width="100" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- Monitoring Services -->
+        <mxCell id="23" value="Monitoring &amp; Observability" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="550" y="500" width="200" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="24" value="CloudWatch&#xa;Metrics &amp; Alarms" style="shape=rectangle;rounded=1;fillColor=#FFF8E1;strokeColor=#F57F17;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="550" y="540" width="120" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="25" value="Prometheus&#xa;&amp; Grafana" style="shape=rectangle;rounded=1;fillColor=#FFF8E1;strokeColor=#F57F17;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="690" y="540" width="120" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- CI/CD Pipeline -->
+        <mxCell id="26" value="CI/CD Pipeline" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="850" y="500" width="150" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="27" value="GitHub Actions&#xa;Validation" style="shape=rectangle;rounded=1;fillColor=#FCE4EC;strokeColor=#880E4F;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="850" y="540" width="120" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- Data Flow Arrows -->
+        <mxCell id="28" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0" parent="1" source="3" target="4" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="29" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0" parent="1" source="4" target="7" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="30" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0" parent="1" source="4" target="8" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="31" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0" parent="1" source="5" target="8" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="32" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0" parent="1" source="6" target="8" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="33" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0" parent="1" source="7" target="10" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="34" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0" parent="1" source="8" target="10" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Service Connections -->
+        <mxCell id="35" value="HTTPS" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="1" vertex="1" connectable="0">
+          <mxGeometry x="0.5" y="10" relative="1" as="geometry">
+            <mxPoint x="320" y="460" as="offset"/>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="36" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0" parent="1" source="14" target="13" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="37" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0" parent="1" source="13" target="15" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="38" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0" parent="1" source="13" target="16" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="39" value="Legend" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="950" y="80" width="100" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="40" value="CloudFormation&#xa;Stacks" style="shape=rectangle;rounded=1;fillColor=#E1F5FE;strokeColor=#01579B;fontColor=#000000;fontSize=10" parent="1" vertex="1">
+          <mxGeometry x="950" y="120" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="41" value="AWS Services" style="shape=rectangle;rounded=1;fillColor=#E8EAF6;strokeColor=#1A237E;fontColor=#000000;fontSize=10" parent="1" vertex="1">
+          <mxGeometry x="950" y="170" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="42" value="Security" style="shape=rectangle;rounded=1;fillColor=#FFEBEE;strokeColor=#B71C1C;fontColor=#000000;fontSize=10" parent="1" vertex="1">
+          <mxGeometry x="950" y="220" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="43" value="Monitoring" style="shape=rectangle;rounded=1;fillColor=#FFF8E1;strokeColor=#F57F17;fontColor=#000000;fontSize=10" parent="1" vertex="1">
+          <mxGeometry x="950" y="270" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- Environment Labels -->
+        <mxCell id="44" value="Multi-Environment Support" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="50" y="650" width="200" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="45" value="Development" style="shape=ellipse;fillColor=#E8F5E8;strokeColor=#2E7D32;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="50" y="690" width="80" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="46" value="Testing" style="shape=ellipse;fillColor=#FFF3E0;strokeColor=#EF6C00;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="150" y="690" width="80" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="47" value="Production" style="shape=ellipse;fillColor=#FFEBEE;strokeColor=#C62828;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="250" y="690" width="80" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="48" value="DR Pilot Light" style="shape=ellipse;fillColor=#E8EAF6;strokeColor=#1565C0;fontColor=#000000" parent="1" vertex="1">
+          <mxGeometry x="350" y="690" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- Compliance Score -->
+        <mxCell id="49" value="AWS Well-Architected&#xa;Compliance: 6.3/10" style="text;html=1;strokeColor=none;fillColor=#E8F5E8;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontSize=12;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="850" y="650" width="200" height="50" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
