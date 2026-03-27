@@ -346,6 +346,28 @@ Resources:
               StringNotEquals:
                 aws:PrincipalOrgID: !Sub "${AWS::AccountId}"
 
+  # Security Hub Automation Rules
+  SecurityHubAutomationRule:
+    Type: AWS::SecurityHub::AutomationRule
+    Condition: ShouldEnableSecurityHub
+    Properties:
+      RuleName: !Sub '${ProjectName}-${Environment}-security-findings'
+      Description: Automate response to critical security findings
+      Criteria:
+        SeverityLabel:
+          - Value: CRITICAL
+            Comparison: EQUALS
+        ComplianceStatus:
+          - Value: FAILED
+            Comparison: EQUALS
+      Actions:
+        - Type: UPDATE_FINDINGS
+          FindingFieldsUpdate:
+            Severity:
+              Label: CRITICAL
+            UserDefinedFields:
+              AutoTagged: 'true'
+
 Outputs:
   WebACLId:
     Description: ID of Web ACL

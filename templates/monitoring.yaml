@@ -70,9 +70,9 @@ Parameters:
   
   GrafanaPassword:
     Type: String
-    Default: changeme
+    Default: '{{resolve:ssm:/ecs-jenkins-github/grafana/password:1}}'
     NoEcho: true
-    Description: Password for Grafana admin user
+    Description: Password for Grafana admin user (stored in SSM Parameter Store)
 
 Conditions:
   DeployGrafana: !Equals [!Ref CreateGrafanaDashboard, 'true']
